@@ -12,7 +12,7 @@ if (-not (Test-Path $python)) {
 Push-Location $projectRoot
 try {
     # This only writes build artifacts beneath the checkout. It needs no administrator rights.
-    & $python -m PyInstaller --noconfirm --clean --onefile --name CareerForge --collect-all uvicorn --collect-all fastapi careerforge\launcher.py
+    & $python -m PyInstaller --noconfirm --clean --onefile --name CareerForge --add-data "careerforge\static;careerforge\static" --collect-all uvicorn --collect-all fastapi careerforge\launcher.py
 } finally {
     Pop-Location
 }

@@ -11,8 +11,8 @@ The version 1 scope excludes automatic publishing, automatic commits/pushes, clo
 ## Recommended architecture
 
 ```text
-React/Vite browser UI
-        | HTTPS / authenticated API only
+Server-served browser UI
+        | authenticated API only
 FastAPI application
   |- SQLite (authoritative metadata/content)
   |- managed filesystem (attachments, reports, export worktrees)
@@ -21,9 +21,9 @@ FastAPI application
   `- provider adapter -> Ollama-compatible endpoint
 ```
 
-Use a modular monolith packaged as one native standalone application: FastAPI serves the compiled React interface and owns the local SQLite database plus managed data directories. This minimizes installation and operational cost while keeping boundaries for AI, reporting, and Git explicit. A background service is deferred: synchronous short requests and a SQLite-backed job table cover v1; add a native worker only when report/export workload proves it necessary.
+Use a modular monolith packaged as one native standalone application: FastAPI serves the bundled HTML/CSS/JavaScript interface and owns the local SQLite database plus managed data directories. This minimizes installation and operational cost while keeping boundaries for AI, reporting, and Git explicit. A background service is deferred: synchronous short requests and a SQLite-backed job table cover v1; add a native worker only when report/export workload proves it necessary.
 
-**Alternatives.** A server-rendered FastAPI UI would reduce components but compromises the responsive capture/review experience. PostgreSQL offers stronger concurrency and advanced full-text search, but SQLite is the right v1 default for this single-user, standalone tool: it removes a required service and keeps data portable in one local database file. A Git library can be evaluated later, but tightly allow-listed `git` subprocess invocations better match the need for status and diff output while avoiding arbitrary command execution.
+**Alternatives.** A React/Vite frontend would offer a richer component ecosystem, but a bundled server-served interface removes Node from the build and release path and better fits a dependency-free download. PostgreSQL offers stronger concurrency and advanced full-text search, but SQLite is the right v1 default for this single-user, standalone tool: it removes a required service and keeps data portable in one local database file. A Git library can be evaluated later, but tightly allow-listed `git` subprocess invocations better match the need for status and diff output while avoiding arbitrary command execution.
 
 ### Provider boundary
 
@@ -55,7 +55,7 @@ SQLite FTS5 indexes cover canonical text and explicitly permitted raw-note searc
 
 ## Deployment model
 
-CareerForge is a native standalone application with **no Docker or Compose requirement**. It runs as a single local process, serves the compiled web UI, and stores its SQLite database, attachments, generated reports, logs, templates, and export worktrees in a user-selected application-data directory. Windows is the primary target; its default data path is `%LOCALAPPDATA%\CareerForge`, which requires no administrator rights. Linux uses an XDG user-data path. Development uses a Python virtual environment and Node only to build the frontend; distribution packages the built frontend, Python runtime, and application dependencies together so normal operation requires no Python, Node, Docker, database server, package installation, or elevation. PyInstaller is the initial Windows packager; a Linux binary is built on Linux.
+CareerForge is a native standalone application with **no Docker or Compose requirement**. It runs as a single local process, serves its bundled web UI, and stores its SQLite database, attachments, generated reports, logs, templates, and export worktrees in a user-selected application-data directory. Windows is the primary target; its default data path is `%LOCALAPPDATA%\CareerForge`, which requires no administrator rights. Linux uses an XDG user-data path. Development uses a Python virtual environment; distribution packages the frontend, Python runtime, and application dependencies together so normal operation requires no Python, Node, Docker, database server, package installation, or elevation. PyInstaller is the initial Windows packager; a Linux binary is built on Linux.
 
 For LAN access, the administrator deliberately binds the application to a selected interface and may place Caddy, Nginx, or Traefik in front of it for TLS. The default bind is loopback only. Migrations run during controlled startup before the application is available.
 

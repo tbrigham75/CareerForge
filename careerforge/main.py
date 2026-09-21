@@ -1,10 +1,13 @@
 import json
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -147,6 +150,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         from .models import utc_now
         item.deleted_at = utc_now(); audit(db, "accomplishment.soft_deleted", "accomplishment", str(item.id), current[0].id); db.commit()
 
+    static_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "careerforge" / "static"
+    if not static_root.exists():
+        static_root = Path(__file__).resolve().parent / "static"
+    app.mount("/", StaticFiles(directory=static_root, html=True), name="web")
     return app
 
 

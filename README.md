@@ -6,7 +6,7 @@ CareerForge will be a local-first, self-hosted archive for professional accompli
 
 ## Current status
 
-Milestone 1 is implemented: a native FastAPI + SQLite backend provides one-time local administrator setup, authenticated sessions with CSRF protection, raw-note/accomplishment CRUD, soft deletion, immutable revision snapshots, and audit events. AI, reports, exports, projects, evidence, and the completed product UI remain to be implemented. The architecture and phased delivery plan are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Milestone 1 is implemented: a native FastAPI + SQLite application provides one-time local administrator setup, authenticated sessions with CSRF protection, a browser UI for sign-in and “I Did This” raw-note capture, accomplishment listing, soft deletion, immutable revision snapshots, and audit events. AI, reports, exports, projects, evidence, search, and detailed editing remain to be implemented. The architecture and phased delivery plan are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Guiding rules
 
@@ -23,7 +23,7 @@ Milestone 1 is implemented: a native FastAPI + SQLite backend provides one-time 
 
 ## Proposed stack
 
-- React + TypeScript + Vite frontend
+- Server-served HTML, CSS, and JavaScript interface (bundled into the executable)
 - FastAPI + SQLAlchemy + Alembic backend
 - SQLite with migrations as the authoritative local database
 - `python-docx` for deterministic server-side Word output
@@ -34,7 +34,7 @@ Milestone 1 is implemented: a native FastAPI + SQLite backend provides one-time 
 1. Create a virtual environment: `py -m venv .venv`
 2. Install packages from the project metadata: `.\.venv\Scripts\python.exe -m pip install --index-url https://pypi.org/simple -e ".[dev]"`
 3. Start the local app: `.\.venv\Scripts\python.exe -m uvicorn careerforge.main:app --host 127.0.0.1 --port 8787`
-4. Open `http://127.0.0.1:8787/docs` and complete the one-time local setup.
+4. Open `http://127.0.0.1:8787/` and complete the one-time local setup.
 
 ## Downloadable standalone build
 

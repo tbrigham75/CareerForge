@@ -12,7 +12,7 @@ from careerforge.main import app
 def open_browser() -> None:
     host = os.getenv("CAREERFORGE_BIND_HOST", "127.0.0.1")
     port = int(os.getenv("CAREERFORGE_BIND_PORT", "8787"))
-    webbrowser.open(f"http://{host}:{port}/docs")
+    webbrowser.open(f"http://{host}:{port}/")
 
 
 if __name__ == "__main__":

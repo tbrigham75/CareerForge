@@ -43,3 +43,10 @@ def test_mutations_require_csrf(tmp_path):
     with make_client(tmp_path) as client:
         setup(client)
         assert client.post("/api/accomplishments", json={"raw_note": "I did this"}).status_code == 403
+
+
+def test_browser_ui_is_served(tmp_path):
+    with make_client(tmp_path) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "CareerForge" in response.text
