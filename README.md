@@ -6,7 +6,7 @@ CareerForge will be a local-first, self-hosted archive for professional accompli
 
 ## Current status
 
-The project is in the **planning milestone**. No application code, database, native standalone runtime, or integrations have been implemented yet. The approved architecture and phased delivery plan are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Milestone 1 is implemented: a native FastAPI + SQLite backend provides one-time local administrator setup, authenticated sessions with CSRF protection, raw-note/accomplishment CRUD, soft deletion, immutable revision snapshots, and audit events. AI, reports, exports, projects, evidence, and the completed product UI remain to be implemented. The architecture and phased delivery plan are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Guiding rules
 
@@ -29,6 +29,21 @@ The project is in the **planning milestone**. No application code, database, nat
 - `python-docx` for deterministic server-side Word output
 - Native standalone installation for Windows and Linux; no Docker dependency
 
+## Run in development
+
+1. Create a virtual environment: `py -m venv .venv`
+2. Install packages from the project metadata: `.\.venv\Scripts\python.exe -m pip install --index-url https://pypi.org/simple -e ".[dev]"`
+3. Start the local app: `.\.venv\Scripts\python.exe -m uvicorn careerforge.main:app --host 127.0.0.1 --port 8787`
+4. Open `http://127.0.0.1:8787/docs` and complete the one-time local setup.
+
+## Downloadable standalone build
+
+Release builds are native executables. A Windows build bundles Python and all application dependencies, so a downloader runs `CareerForge.exe` directly and does not install Python, Node, Docker, a database server, or packages. Neither running the executable nor creating it needs administrator rights. By default it stores data per user in `%LOCALAPPDATA%\CareerForge`; `CAREERFORGE_DATA_DIR` can choose another writable directory. Build it from the source checkout with `scripts\build-windows.ps1`; Linux distributions must be built on Linux.
+
+## Milestone 1 verification
+
+Run `.\.venv\Scripts\python.exe -m pytest -q`. The suite verifies one-time local setup, no password disclosure, authenticated raw-note CRUD with revisions and soft deletion, and CSRF enforcement.
+
 ## Next step
 
-Review the decisions in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#decisions-needed-before-implementation). Once approved, implementation starts with the repository scaffold, local authentication, migrations, and accomplishment capture.
+Next: implement the browser UI, project and evidence records, search, and the safe source-document import workflow.
