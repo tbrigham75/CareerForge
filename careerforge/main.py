@@ -1,5 +1,6 @@
 import json
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -45,6 +46,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="CareerForge", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.sessions = sessions
+    app.state.client_seen = False
+    app.state.last_client_heartbeat = 0.0
     app.add_middleware(CORSMiddleware, allow_origins=[], allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type", "X-CSRF-Token"])
 
     def db_session():
@@ -74,6 +77,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/health")
     def health():
         return {"status": "ok", "mode": "native-standalone"}
+
+    @app.post("/api/client-heartbeat", status_code=status.HTTP_204_NO_CONTENT)
+    def client_heartbeat():
+        app.state.client_seen = True
+        app.state.last_client_heartbeat = time.monotonic()
 
     @app.get("/", include_in_schema=False)
     def index():

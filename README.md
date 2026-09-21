@@ -40,6 +40,8 @@ Milestone 1 is implemented: a native FastAPI + SQLite application provides one-t
 
 Release builds are native executables. A Windows build bundles Python and all application dependencies, so a downloader runs `CareerForge.exe` directly and does not install Python, Node, Docker, a database server, or packages. Neither running the executable nor creating it needs administrator rights. By default it stores data per user in `%LOCALAPPDATA%\CareerForge`; `CAREERFORGE_DATA_DIR` can choose another writable directory. Launch the executable and keep it running while using the browser tab—do not open `index.html` directly. Close the executable before replacing it with an updated build. Build it from the source checkout with `scripts\build-windows.ps1`; Linux distributions must be built on Linux.
 
+The launcher closes automatically about 15 seconds after the last CareerForge browser tab closes. Keeping any CareerForge tab open keeps the local application running.
+
 ## Milestone 1 verification
 
 Run `.\.venv\Scripts\python.exe -m pytest -q`. The suite verifies one-time local setup, no password disclosure, authenticated raw-note CRUD with revisions and soft deletion, and CSRF enforcement.

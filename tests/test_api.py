@@ -57,3 +57,8 @@ def test_browser_ui_is_served(tmp_path):
         assert response.status_code == 200
         assert "CareerForge" in response.text
         assert "I Did This" in response.text
+
+
+def test_browser_heartbeat_is_available(tmp_path):
+    with make_client(tmp_path) as client:
+        assert client.post("/api/client-heartbeat").status_code == 204

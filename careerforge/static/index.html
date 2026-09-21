@@ -29,6 +29,7 @@
     </main>
     <script>
       let csrfToken=null; const $=id=>document.getElementById(id); const show=(id,on)=>$(id).hidden=!on;
+      const heartbeat=()=>fetch('/api/client-heartbeat',{method:'POST',keepalive:true}).catch(()=>{}); heartbeat(); setInterval(heartbeat,5000); addEventListener('pagehide',heartbeat);
       const message=(text,type='error')=>{const b=$('message');b.textContent=text;b.className='message '+type;b.hidden=false};
       async function api(url,opt={}){const h={'Content-Type':'application/json',...(opt.headers||{})};if(csrfToken)h['X-CSRF-Token']=csrfToken;const r=await fetch(url,{...opt,headers:h});if(!r.ok){const b=await r.json().catch(()=>({}));throw Error(b.detail||'Request failed.')}return r.status===204?null:r.json()}
       const escapeHtml=value=>String(value).replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
