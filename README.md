@@ -38,7 +38,7 @@ Milestone 1 is implemented: a native FastAPI + SQLite application provides one-t
 
 ## Downloadable standalone build
 
-Release builds are native executables. A Windows build bundles Python and all application dependencies, so a downloader runs `CareerForge.exe` directly and does not install Python, Node, Docker, a database server, or packages. Neither running the executable nor creating it needs administrator rights. By default it stores data per user in `%LOCALAPPDATA%\CareerForge`; `CAREERFORGE_DATA_DIR` can choose another writable directory. Build it from the source checkout with `scripts\build-windows.ps1`; Linux distributions must be built on Linux.
+Release builds are native executables. A Windows build bundles Python and all application dependencies, so a downloader runs `CareerForge.exe` directly and does not install Python, Node, Docker, a database server, or packages. Neither running the executable nor creating it needs administrator rights. By default it stores data per user in `%LOCALAPPDATA%\CareerForge`; `CAREERFORGE_DATA_DIR` can choose another writable directory. Launch the executable and keep it running while using the browser tab—do not open `index.html` directly. Close the executable before replacing it with an updated build. Build it from the source checkout with `scripts\build-windows.ps1`; Linux distributions must be built on Linux.
 
 ## Milestone 1 verification
 

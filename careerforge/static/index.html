@@ -38,7 +38,7 @@
       $('login-form').onsubmit=async e=>{e.preventDefault();try{await auth('/api/login',e.currentTarget)}catch(x){message(x.message)}};
       $('capture-form').onsubmit=async e=>{e.preventDefault();try{const v=Object.fromEntries(new FormData(e.currentTarget));if(!v.date_completed)delete v.date_completed;await api('/api/accomplishments',{method:'POST',body:JSON.stringify(v)});e.currentTarget.reset();await refresh();message('Raw note saved locally.','success')}catch(x){message(x.message)}};
       $('refresh').onclick=()=>refresh().catch(x=>message(x.message)); $('logout').onclick=async()=>{await api('/api/logout',{method:'POST'});csrfToken=null;show('app',false);show('logout',false);show('login-card',true)};
-      (async()=>{try{const s=await api('/api/setup-status');if(s.setup_required)show('setup-card',true);else{try{await refresh();show('app',true);show('logout',true)}catch{show('login-card',true)}}}catch(x){message(x.message)}})();
+      (async()=>{try{const s=await api('/api/setup-status');if(s.setup_required)show('setup-card',true);else{try{await refresh();show('app',true);show('logout',true)}catch{show('login-card',true)}}}catch(x){message(location.protocol==='file:'?'CareerForge must be launched through CareerForge.exe; do not open index.html directly.':'CareerForge’s local service is unavailable. Keep CareerForge.exe open, then refresh this page.')}})();
     </script>
   </body>
 </html>

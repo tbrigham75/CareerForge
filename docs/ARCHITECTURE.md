@@ -55,7 +55,7 @@ SQLite FTS5 indexes cover canonical text and explicitly permitted raw-note searc
 
 ## Deployment model
 
-CareerForge is a native standalone application with **no Docker or Compose requirement**. It runs as a single local process, serves its bundled web UI, and stores its SQLite database, attachments, generated reports, logs, templates, and export worktrees in a user-selected application-data directory. Windows is the primary target; its default data path is `%LOCALAPPDATA%\CareerForge`, which requires no administrator rights. Linux uses an XDG user-data path. Development uses a Python virtual environment; distribution packages the frontend, Python runtime, and application dependencies together so normal operation requires no Python, Node, Docker, database server, package installation, or elevation. PyInstaller is the initial Windows packager; a Linux binary is built on Linux.
+CareerForge is a native standalone application with **no Docker or Compose requirement**. It runs as one loopback-only local process and serves its embedded web UI and API from the same origin. It stores its SQLite database, attachments, generated reports, logs, templates, and export worktrees in a user-selected application-data directory. Windows is the primary target; its default data path is `%LOCALAPPDATA%\CareerForge`, which requires no administrator rights. Linux uses an XDG user-data path. Development uses a Python virtual environment; distribution packages the frontend, Python runtime, and application dependencies together so normal operation requires no Python, Node, Docker, database server, package installation, or elevation. PyInstaller is the initial Windows packager; a Linux binary is built on Linux. The executable is the supported launch point; opening the embedded page as `file://` is unsupported because the backend API is not present.
 
 For LAN access, the administrator deliberately binds the application to a selected interface and may place Caddy, Nginx, or Traefik in front of it for TLS. The default bind is loopback only. Migrations run during controlled startup before the application is available.
 
@@ -112,7 +112,7 @@ Every implementation phase will state what changed, how to run and test it, migr
 
 ## Decisions needed before implementation
 
-1. Confirm the proposed native standalone React/Vite + FastAPI + SQLite architecture, with no Docker dependency.
+1. Confirm the proposed native standalone embedded-browser UI + FastAPI + SQLite architecture, with no Docker dependency.
 2. Select the initial sign-in bootstrap: an environment-provided administrator password, or a one-time local setup screen protected by a setup token.
 3. Confirm whether this repository is the application source only (recommended) and provide a separate local path/repository later for Markdown exports.
 4. Confirm default AI policy: offline/no-AI until configured (recommended), or permit local Ollama by default after explicit provider setup.
