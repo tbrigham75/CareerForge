@@ -14,16 +14,16 @@ The version 1 scope excludes automatic publishing, automatic commits/pushes, clo
 React/Vite browser UI
         | HTTPS / authenticated API only
 FastAPI application
-  |- PostgreSQL (authoritative metadata/content)
+  |- SQLite (authoritative metadata/content)
   |- managed filesystem (attachments, reports, export worktrees)
   |- document service (python-docx)
   |- Git export service (validated subprocess commands)
   `- provider adapter -> Ollama-compatible endpoint
 ```
 
-Use a modular monolith: one backend deployment, one frontend, and PostgreSQL. This minimizes operational cost while keeping boundaries for AI, reporting, and Git explicit. A Redis worker is deferred: synchronous short requests and a database-backed job table cover v1; add a worker only when report/export workload proves it necessary.
+Use a modular monolith packaged as one native standalone application: FastAPI serves the compiled React interface and owns the local SQLite database plus managed data directories. This minimizes installation and operational cost while keeping boundaries for AI, reporting, and Git explicit. A background service is deferred: synchronous short requests and a SQLite-backed job table cover v1; add a native worker only when report/export workload proves it necessary.
 
-**Alternatives.** A server-rendered FastAPI UI would reduce components but compromises the responsive capture/review experience. SQLite is excellent for tests and a disposable developer setup but is not the production default because PostgreSQL has stronger concurrency, full-text search, and migration behavior. A Git library can be evaluated later, but tightly allow-listed `git` subprocess invocations better match the need for status and diff output while avoiding arbitrary command execution.
+**Alternatives.** A server-rendered FastAPI UI would reduce components but compromises the responsive capture/review experience. PostgreSQL offers stronger concurrency and advanced full-text search, but SQLite is the right v1 default for this single-user, standalone tool: it removes a required service and keeps data portable in one local database file. A Git library can be evaluated later, but tightly allow-listed `git` subprocess invocations better match the need for status and diff output while avoiding arbitrary command execution.
 
 ### Provider boundary
 
@@ -51,13 +51,15 @@ All primary entities have UUID primary keys, `created_at`, `updated_at`, and sof
 | `export_profiles`, `exports`, `export_items` | validated local worktree/profile policy, manifest/result, approval/audit metadata |
 | `audit_events` | actor, action, related ID, timing, outcome, safe diagnostics/content hash |
 
-PostgreSQL full-text indexes cover canonical text and explicitly permitted raw-note search. Sensitive content is not placed in diagnostic fields by default. Attachments live outside the database in managed paths, with metadata and hash in `evidence`.
+SQLite FTS5 indexes cover canonical text and explicitly permitted raw-note search. Sensitive content is not placed in diagnostic fields by default. Attachments live outside the database in managed paths, with metadata and hash in `evidence`.
 
 ## Deployment model
 
-Docker Compose runs `frontend`, `api`, and `postgres` with persistent volumes for PostgreSQL, attachments, generated reports, logs, templates, and export worktrees. Development uses the same compose topology on Windows; production runs it on Ubuntu behind Caddy, Nginx, or Traefik. The reverse proxy terminates TLS; application cookies are secure when TLS is enabled. Migrations run as a controlled startup job before the API becomes healthy.
+CareerForge is a native standalone application with **no Docker or Compose requirement**. It runs as a single local process, serves the compiled web UI, and stores its SQLite database, attachments, generated reports, logs, templates, and export worktrees in a user-selected application-data directory. Windows is the primary target; Linux support uses the same Python runtime and directory layout. Development uses a Python virtual environment and Node only to build the frontend; distribution will package the built frontend with the backend so normal operation does not require Node.
 
-Secrets arrive through Docker secrets or environment variables outside Git: an application encryption key, database password, and initial-admin bootstrap secret. `.env.example` contains names and safe placeholders only. Backup/restore later use database dumps plus attachment/report/export-worktree archives and a manifest with version checks.
+For LAN access, the administrator deliberately binds the application to a selected interface and may place Caddy, Nginx, or Traefik in front of it for TLS. The default bind is loopback only. Migrations run during controlled startup before the application is available.
+
+Secrets arrive through OS environment variables, a local protected secrets file, or a platform credential store where available; they are never committed. An application encryption key and initial-admin bootstrap secret are required. `.env.example` contains names and safe placeholders only. Backup/restore later archive the SQLite database, attachments, reports, and export worktrees with a versioned manifest.
 
 ## Markdown export layout
 
@@ -78,7 +80,7 @@ Each record uses portable YAML front matter with UUID, dates, status, taxonomy, 
 
 - Local authentication with Argon2id hashes, server-side sessions, CSRF defense, rate limits, secure/HttpOnly/SameSite cookies, and session revocation.
 - Validation/authorization at API boundaries; output encoding; structured errors without secrets; audit event hashes rather than sensitive payloads by default.
-- Credentials encrypted at rest using a key from Docker secrets/environment; rotation re-encrypts secrets; UI/API only reveal whether a secret exists.
+- Credentials encrypted at rest using a key from an OS environment variable, protected local secret, or platform credential store; rotation re-encrypts secrets; UI/API only reveal whether a secret exists.
 - Provider URLs are parsed and policy-checked; metadata and dangerous link-local targets are blocked; redirects are rechecked; LAN/VPN/loopback access is opt-in by admin allowlist; timeouts and response-size limits apply.
 - Remote AI requires a visible classification and confirmation showing exactly what will be sent. A local-only policy can prohibit it. Confidential/do-not-sync content cannot silently transit to remote providers or Git.
 - Sensitivity policy: public-safe may use public-safe profiles; private/internal require a private profile and confirmation; confidential defaults to exclusion; do-not-sync is always excluded.
@@ -88,7 +90,7 @@ Each record uses portable YAML front matter with UUID, dates, status, taxonomy, 
 
 | Phase | Deliverable and verification |
 | --- | --- |
-| 0 | Repository skeleton, Compose, environment docs, CI lint/test baseline; verify reproducible local startup. |
+| 0 | Repository skeleton, native runtime/installer, environment docs, CI lint/test baseline; verify reproducible local startup without Docker. |
 | 1 | Auth, migrations, audit foundation, accomplishment/raw-note CRUD and revisions; API/UI and unit/integration tests. |
 | 2 | Projects, evidence, taxonomy, archive search/dashboard, safe ODT seed/import; idempotency and authorization tests. |
 | 3 | Prompt templates, provider configuration, encrypted secrets, SSRF policy, Ollama adapter, structured draft/review flow; mock-adapter validation tests. |
@@ -101,7 +103,7 @@ Every implementation phase will state what changed, how to run and test it, migr
 ## Assumptions
 
 1. One trusted user/admin is sufficient for v1; roles beyond administrator are deferred.
-2. PostgreSQL and Docker Desktop are acceptable dependencies for the primary deployment.
+2. A local application-data directory and SQLite database are acceptable for the primary deployment; no Docker, Compose, or external database service is required.
 3. The source ODT remains in its current path and is a reference/example, not a claim-verification source.
 4. GitHub use is optional and target repositories may be private; SSH is the preferred authentication route.
 5. Attachments can be stored locally with metadata in v1; OCR and automatic external-system imports are deferred.
@@ -110,7 +112,7 @@ Every implementation phase will state what changed, how to run and test it, migr
 
 ## Decisions needed before implementation
 
-1. Confirm the proposed React/Vite + FastAPI + PostgreSQL Docker Compose architecture.
+1. Confirm the proposed native standalone React/Vite + FastAPI + SQLite architecture, with no Docker dependency.
 2. Select the initial sign-in bootstrap: an environment-provided administrator password, or a one-time local setup screen protected by a setup token.
 3. Confirm whether this repository is the application source only (recommended) and provide a separate local path/repository later for Markdown exports.
 4. Confirm default AI policy: offline/no-AI until configured (recommended), or permit local Ollama by default after explicit provider setup.

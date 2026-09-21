@@ -6,7 +6,7 @@ CareerForge will be a local-first, self-hosted archive for professional accompli
 
 ## Current status
 
-The project is in the **planning milestone**. No application code, database, Docker stack, or integrations have been implemented yet. The approved architecture and phased delivery plan are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The project is in the **planning milestone**. No application code, database, native standalone runtime, or integrations have been implemented yet. The approved architecture and phased delivery plan are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Guiding rules
 
@@ -25,9 +25,9 @@ The project is in the **planning milestone**. No application code, database, Doc
 
 - React + TypeScript + Vite frontend
 - FastAPI + SQLAlchemy + Alembic backend
-- PostgreSQL in production; SQLite only for local tests/development
+- SQLite with migrations as the authoritative local database
 - `python-docx` for deterministic server-side Word output
-- Docker Compose for Windows development and Linux deployment
+- Native standalone installation for Windows and Linux; no Docker dependency
 
 ## Next step
 
