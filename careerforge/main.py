@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -31,6 +32,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     engine = make_engine(settings)
     sessions = make_session_factory(engine)
+    static_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "careerforge" / "static"
+    if not static_root.exists():
+        static_root = Path(__file__).resolve().parent / "static"
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -70,6 +74,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/health")
     def health():
         return {"status": "ok", "mode": "native-standalone"}
+
+    @app.get("/", include_in_schema=False)
+    def index():
+        return FileResponse(static_root / "index.html")
 
     @app.get("/api/setup-status")
     def setup_status(db: Annotated[Session, Depends(db_session)]):
@@ -150,10 +158,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         from .models import utc_now
         item.deleted_at = utc_now(); audit(db, "accomplishment.soft_deleted", "accomplishment", str(item.id), current[0].id); db.commit()
 
-    static_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "careerforge" / "static"
-    if not static_root.exists():
-        static_root = Path(__file__).resolve().parent / "static"
-    app.mount("/", StaticFiles(directory=static_root, html=True), name="web")
+    app.mount("/assets", StaticFiles(directory=static_root), name="assets")
     return app
 
 

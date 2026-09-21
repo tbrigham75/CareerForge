@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="CareerForge local accomplishment archive">
     <title>CareerForge</title>
-    <link rel="stylesheet" href="/styles.css">
+    <style>body{margin:0;font:16px system-ui,sans-serif;background:#f5f7fa;color:#17212b}header{padding:18px 8%;background:#102b36;color:#fff;display:flex;justify-content:space-between}main{max-width:900px;margin:auto;padding:32px}.card{background:#fff;border:1px solid #d8e0e7;border-radius:12px;padding:24px;margin:18px 0}label,form{display:grid;gap:7px;margin:10px 0}input,select,button{padding:10px;font:inherit;border-radius:7px;border:1px solid #b8c5d0}button{background:#0c6e63;color:#fff;font-weight:700}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.record{background:#fff;border:1px solid #d8e0e7;border-radius:10px;padding:16px;margin:10px 0}.eyebrow,.status{font-size:.72rem;font-weight:700;letter-spacing:.08em;color:#5c6977}.message{padding:12px;margin-bottom:14px;border-radius:8px}.error{background:#fee8e7}.success{background:#ddf0ec}@media(max-width:600px){.grid{grid-template-columns:1fr}}</style>
   </head>
   <body>
     <header><div><span class="eyebrow">LOCAL-FIRST ACCOMPLISHMENT ARCHIVE</span><h1>CareerForge</h1></div><button id="logout" class="quiet" hidden>Sign out</button></header>
@@ -27,6 +27,18 @@
         <section id="records" class="records"><p class="empty">No entries yet. Capture the work while it is fresh.</p></section>
       </section>
     </main>
-    <script src="/app.js" defer></script>
+    <script>
+      let csrfToken=null; const $=id=>document.getElementById(id); const show=(id,on)=>$(id).hidden=!on;
+      const message=(text,type='error')=>{const b=$('message');b.textContent=text;b.className='message '+type;b.hidden=false};
+      async function api(url,opt={}){const h={'Content-Type':'application/json',...(opt.headers||{})};if(csrfToken)h['X-CSRF-Token']=csrfToken;const r=await fetch(url,{...opt,headers:h});if(!r.ok){const b=await r.json().catch(()=>({}));throw Error(b.detail||'Request failed.')}return r.status===204?null:r.json()}
+      const escapeHtml=value=>String(value).replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+      async function refresh(){const records=await api('/api/accomplishments');$('records').innerHTML=records.length?records.map(r=>`<article class="record"><span class="status">${escapeHtml(r.status.replace('_',' '))}</span><h3>${escapeHtml(r.title||'Untitled work note')}</h3><p>${escapeHtml(r.raw_note||r.action||'')}</p></article>`).join(''):'<p>No entries yet. Capture the work while it is fresh.</p>'}
+      async function auth(path,form){const r=await api(path,{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form)))});csrfToken=r.csrf_token;show('setup-card',false);show('login-card',false);show('app',true);show('logout',true);await refresh();message(`Signed in as ${r.username}.`,'success')}
+      $('setup-form').onsubmit=async e=>{e.preventDefault();try{await auth('/api/setup',e.currentTarget)}catch(x){message(x.message)}};
+      $('login-form').onsubmit=async e=>{e.preventDefault();try{await auth('/api/login',e.currentTarget)}catch(x){message(x.message)}};
+      $('capture-form').onsubmit=async e=>{e.preventDefault();try{const v=Object.fromEntries(new FormData(e.currentTarget));if(!v.date_completed)delete v.date_completed;await api('/api/accomplishments',{method:'POST',body:JSON.stringify(v)});e.currentTarget.reset();await refresh();message('Raw note saved locally.','success')}catch(x){message(x.message)}};
+      $('refresh').onclick=()=>refresh().catch(x=>message(x.message)); $('logout').onclick=async()=>{await api('/api/logout',{method:'POST'});csrfToken=null;show('app',false);show('logout',false);show('login-card',true)};
+      (async()=>{try{const s=await api('/api/setup-status');if(s.setup_required)show('setup-card',true);else{try{await refresh();show('app',true);show('logout',true)}catch{show('login-card',true)}}}catch(x){message(x.message)}})();
+    </script>
   </body>
 </html>
