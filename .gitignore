@@ -1,0 +1,20 @@
+# Local reference material: remains outside application source control and exports.
+Tom's Brag Sheet.odt
+
+# Future local runtime data and secrets.
+.env
+.env.*
+!.env.example
+data/
+attachments/
+reports/
+logs/
+export-worktrees/
+
+# Tooling artifacts.
+node_modules/
+dist/
+.venv/
+__pycache__/
+.pytest_cache/
+.coverage
