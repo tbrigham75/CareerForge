@@ -6,7 +6,7 @@ CareerForge will be a local-first, self-hosted archive for professional accompli
 
 ## Current status
 
-Milestone 1 is implemented: a native FastAPI + SQLite application provides one-time local administrator setup, authenticated sessions with CSRF protection, a browser UI for sign-in and “I Did This” raw-note capture, accomplishment listing, soft deletion, immutable revision snapshots, and audit events. AI, reports, exports, projects, evidence, search, and detailed editing remain to be implemented. The architecture and phased delivery plan are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Milestone 1 is implemented: a native FastAPI + SQLite application provides one-time local administrator setup, authenticated sessions with CSRF protection, a browser UI for sign-in and “I Did This” raw-note capture, themed navigation, AI-provider setup, accomplishment listing, soft deletion, immutable revision snapshots, and audit events. AI drafts require explicit review. Reports, exports, projects, evidence, search, and detailed editing remain to be implemented. The architecture and phased delivery plan are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Guiding rules
 

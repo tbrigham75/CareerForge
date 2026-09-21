@@ -1,6 +1,8 @@
 import json
 import sys
 import time
+from base64 import urlsafe_b64encode
+from hashlib import sha256
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -10,13 +12,15 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
+from cryptography.fernet import Fernet
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import Settings, load_settings
 from .database import Base, make_engine, make_session_factory
-from .models import Accomplishment, AccomplishmentRevision, AuditEvent, User
-from .schemas import AccomplishmentCreate, AccomplishmentResponse, AccomplishmentUpdate, LoginRequest, SetupRequest
+from .models import AIProvider, Accomplishment, AccomplishmentRevision, AuditEvent, User
+from .schemas import AIProviderCreate, AIProviderResponse, AccomplishmentCreate, AccomplishmentResponse, AccomplishmentUpdate, DraftRequest, DraftResponse, LoginRequest, SetupRequest
 from .security import hash_password, issue_session, read_session, require_csrf, verify_password
 
 
@@ -48,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sessions = sessions
     app.state.client_seen = False
     app.state.last_client_heartbeat = 0.0
+    cipher = Fernet(urlsafe_b64encode(sha256(settings.session_secret.encode()).digest()))
     app.add_middleware(CORSMiddleware, allow_origins=[], allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type", "X-CSRF-Token"])
 
     def db_session():
@@ -74,6 +79,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def audit(db: Session, action: str, target_type: str, target_id: str | None, actor_id: UUID | None = None):
         db.add(AuditEvent(actor_id=actor_id, action=action, target_type=target_type, target_id=target_id))
 
+    def provider_response(provider: AIProvider) -> dict:
+        return {"id": provider.id, "display_name": provider.display_name, "base_url": provider.base_url, "provider_class": provider.provider_class, "default_model": provider.default_model, "enabled": provider.enabled, "is_default": provider.is_default, "has_api_token": provider.encrypted_token is not None}
+
     @app.get("/api/health")
     def health():
         return {"status": "ok", "mode": "native-standalone"}
@@ -82,6 +90,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def client_heartbeat():
         app.state.client_seen = True
         app.state.last_client_heartbeat = time.monotonic()
+
+    @app.get("/api/ai-providers", response_model=list[AIProviderResponse])
+    def list_ai_providers(db: Annotated[Session, Depends(db_session)], _: Annotated[tuple[User, dict], Depends(current_user)]):
+        return [provider_response(provider) for provider in db.scalars(select(AIProvider).where(AIProvider.enabled.is_(True)).order_by(AIProvider.display_name))]
+
+    @app.post("/api/ai-providers", response_model=AIProviderResponse, status_code=status.HTTP_201_CREATED)
+    def create_ai_provider(payload: AIProviderCreate, db: Annotated[Session, Depends(db_session)], current: Annotated[tuple[User, dict], Depends(current_user)]):
+        if not payload.base_url.startswith(("http://", "https://")):
+            raise HTTPException(status_code=422, detail="Provider URL must begin with http:// or https://.")
+        if payload.is_default:
+            for existing in db.scalars(select(AIProvider)):
+                existing.is_default = False
+        provider = AIProvider(**payload.model_dump(exclude={"api_token"}), encrypted_token=cipher.encrypt(payload.api_token.encode()).decode() if payload.api_token else None)
+        db.add(provider); db.flush(); audit(db, "ai_provider.created", "ai_provider", str(provider.id), current[0].id); db.commit(); db.refresh(provider)
+        return provider_response(provider)
+
+    @app.post("/api/ai-providers/{provider_id}/test")
+    def test_ai_provider(provider_id: UUID, db: Annotated[Session, Depends(db_session)], _: Annotated[tuple[User, dict], Depends(current_user)]):
+        provider = db.get(AIProvider, provider_id)
+        if not provider: raise HTTPException(status_code=404, detail="AI provider not found.")
+        headers = {"Authorization": f"Bearer {cipher.decrypt(provider.encrypted_token.encode()).decode()}"} if provider.encrypted_token else {}
+        try:
+            response = httpx.get(provider.base_url.rstrip("/") + "/api/tags", headers=headers, timeout=10.0)
+            response.raise_for_status()
+            return {"ok": True, "models": [model.get("name") for model in response.json().get("models", [])]}
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"Provider connection failed: {exc.__class__.__name__}") from exc
+
+    @app.post("/api/ai-drafts", response_model=DraftResponse)
+    def create_ai_draft(payload: DraftRequest, db: Annotated[Session, Depends(db_session)], current: Annotated[tuple[User, dict], Depends(current_user)]):
+        provider = db.get(AIProvider, payload.provider_id) if payload.provider_id else db.scalar(select(AIProvider).where(AIProvider.is_default.is_(True), AIProvider.enabled.is_(True)))
+        if not provider: raise HTTPException(status_code=409, detail="Configure and select an AI provider first.")
+        prompt = "Use only the supplied factual note. Return JSON with title, action, metric, impact, supporting_narrative, placeholders_requiring_confirmation, follow_up_questions, confidence_notes. Never invent facts, metrics, outcomes, dates, systems, or claims. Missing facts must be visible placeholders. Note: " + payload.raw_note
+        headers = {"Authorization": f"Bearer {cipher.decrypt(provider.encrypted_token.encode()).decode()}"} if provider.encrypted_token else {}
+        try:
+            response = httpx.post(provider.base_url.rstrip("/") + "/api/generate", headers=headers, json={"model": provider.default_model, "prompt": prompt, "format": "json", "stream": False}, timeout=60.0)
+            response.raise_for_status(); draft = json.loads(response.json()["response"])
+            audit(db, "ai_draft.generated", "ai_provider", str(provider.id), current[0].id); db.commit()
+            return draft
+        except (httpx.HTTPError, KeyError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail="AI draft failed; your original note was not changed.") from exc
 
     @app.get("/", include_in_schema=False)
     def index():

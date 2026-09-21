@@ -80,3 +80,17 @@ class AuditEvent(Base):
     outcome: Mapped[str] = mapped_column(String(30), default="success")
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class AIProvider(Base):
+    __tablename__ = "ai_providers"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    display_name: Mapped[str] = mapped_column(String(120), unique=True)
+    base_url: Mapped[str] = mapped_column(String(500))
+    provider_class: Mapped[str] = mapped_column(String(20), default="local")
+    default_model: Mapped[str] = mapped_column(String(160))
+    encrypted_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
