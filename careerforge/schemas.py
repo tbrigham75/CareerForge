@@ -8,7 +8,7 @@ from .models import AccomplishmentStatus, Sensitivity
 
 class SetupRequest(BaseModel):
     username: str = Field(min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
-    password: str = Field(min_length=14, max_length=256)
+    password: str = Field(min_length=10, max_length=256)
 
 
 class LoginRequest(SetupRequest):

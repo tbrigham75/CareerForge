@@ -23,6 +23,12 @@ def test_local_setup_is_one_time_and_password_is_not_returned(tmp_path):
         assert client.post("/api/setup", json={"username": "other", "password": "a-safe-test-password"}).status_code == 409
 
 
+def test_password_must_have_at_least_ten_characters(tmp_path):
+    with make_client(tmp_path) as client:
+        response = client.post("/api/setup", json={"username": "admin", "password": "ninechars"})
+        assert response.status_code == 422
+
+
 def test_raw_note_crud_preserves_revision_history(tmp_path):
     with make_client(tmp_path) as client:
         csrf = setup(client)
