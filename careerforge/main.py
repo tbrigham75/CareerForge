@@ -153,6 +153,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def create_goal(payload: GoalCreate, db: Annotated[Session, Depends(db_session)], current: Annotated[tuple[User, dict], Depends(current_user)]):
         goal = Goal(user_id=current[0].id, **payload.model_dump()); db.add(goal); db.flush(); audit(db, "goal.created", "goal", str(goal.id), current[0].id); db.commit(); db.refresh(goal); return goal
 
+    @app.post("/api/goals/suggestions")
+    def suggest_goals(db: Annotated[Session, Depends(db_session)], current: Annotated[tuple[User, dict], Depends(current_user)]):
+        provider = db.scalar(select(AIProvider).where(AIProvider.is_default.is_(True), AIProvider.enabled.is_(True)))
+        if not provider: raise HTTPException(status_code=409, detail="Configure an AI provider in Settings before requesting suggestions.")
+        accomplishments = list(db.scalars(select(Accomplishment).where(Accomplishment.deleted_at.is_(None)).order_by(Accomplishment.updated_at.desc()).limit(20)))
+        if not accomplishments: raise HTTPException(status_code=409, detail="Save at least one accomplishment before requesting goal suggestions.")
+        notes = "\n".join(f"- {item.raw_note or item.action or item.title}" for item in accomplishments)
+        prompt = "Based only on these user accomplishments, propose three concise future professional goals. Do not invent facts or claim outcomes. Return JSON object {suggestions:[{title:string,details:string}]}. Accomplishments:\n" + notes
+        headers = {"Authorization": f"Bearer {cipher.decrypt(provider.encrypted_token.encode()).decode()}"} if provider.encrypted_token else {}
+        try:
+            response = httpx.post(provider.base_url.rstrip("/") + "/api/generate", headers=headers, json={"model": provider.default_model, "prompt": prompt, "format": "json", "stream": False}, timeout=60.0)
+            response.raise_for_status(); result = json.loads(response.json()["response"])
+            audit(db, "goal_suggestions.generated", "ai_provider", str(provider.id), current[0].id); db.commit()
+            return {"suggestions": result.get("suggestions", [])}
+        except (httpx.HTTPError, KeyError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail="Goal suggestions failed; no goals were changed.") from exc
+
     @app.post("/api/password")
     def change_password(payload: PasswordChange, db: Annotated[Session, Depends(db_session)], current: Annotated[tuple[User, dict], Depends(current_user)]):
         user = current[0]
