@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 
@@ -9,6 +10,7 @@ from app.schemas import AccomplishmentInput
 from app.security import decrypt_secret, encrypt_secret
 from app.services.accomplishments import archive, create, update
 from app.services.ai import ProviderSafetyError, classify_and_validate_url
+from app.services.backup import BackupError, create_backup, validate_backup_archive
 from app.services.exporter import export_markdown
 from app.services.reports import generate_docx
 
@@ -61,3 +63,16 @@ def test_revisions_archive_report_and_export(tmp_path: Path):
         manifest = export_markdown(session, tmp_path, dry_run=False)
         assert len(manifest["files"]) == 1
         assert (tmp_path / manifest["files"][0]).read_text(encoding="utf-8").startswith("---")
+
+
+def test_backup_creation_and_unsafe_member_rejection(tmp_path: Path):
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "careerforge.sqlite3").write_text("test", encoding="utf-8")
+    backup = create_backup(tmp_path)
+    assert backup.is_file()
+    assert "data/careerforge.sqlite3" in validate_backup_archive(backup)
+    unsafe = tmp_path / "unsafe.zip"
+    with ZipFile(unsafe, "w", compression=ZIP_DEFLATED) as bundle:
+        bundle.writestr("../outside.txt", "no")
+    with pytest.raises(BackupError):
+        validate_backup_archive(unsafe)

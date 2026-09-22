@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Operations</h1><section class="panel"><h2>Local backup</h2><p>Create a ZIP of local CareerForge data. The archive excludes prior backup archives to avoid recursion. Store the encryption key from `.env` separately; it is required to decrypt provider secrets after recovery.</p><form action="/operations/backup" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label>Type BACKUP to create and validate the archive<input name="confirmation" required></label><button>Create local backup</button></form></section><section class="panel"><h2>Available backups</h2><ul>{% for backup in backups %}<li>{{ backup.name }}</li>{% else %}<li>No backups yet.</li>{% endfor %}</ul><p class="muted">Restore remains a manual, confirmation-gated PowerShell operation: inspect the archive, take a fresh backup, then use `scripts/restore.ps1 -Archive <path> -ConfirmRestore`.</p></section>
+{% endblock %}

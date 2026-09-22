@@ -56,6 +56,7 @@ from app.services.ai import (
     generate_draft,
     list_models,
 )
+from app.services.backup import BackupError, create_backup, validate_backup_archive
 from app.services.exporter import export_markdown
 from app.services.importer import import_odt
 from app.services.reports import generate_docx
@@ -1322,6 +1323,45 @@ def audit(request: Request, session: SessionDependency, _: User = Depends(curren
 def imports_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
     runs = list(session.scalars(select(ImportRun).order_by(ImportRun.created_at.desc()).limit(100)))
     return templates.TemplateResponse("imports.html", context(request, runs=runs))
+
+
+@app.get("/operations")
+def operations_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
+    backups = sorted((settings.data_dir / "backups").glob("CareerForge-*.zip"), reverse=True)
+    return templates.TemplateResponse("operations.html", context(request, backups=backups))
+
+
+@app.post("/operations/backup")
+def create_local_backup(
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    confirmation: Annotated[str, Form()],
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    if confirmation != "BACKUP":
+        raise HTTPException(status_code=400, detail="Type BACKUP to create a local archive.")
+    try:
+        archive = create_backup(settings.data_dir)
+        members = validate_backup_archive(archive)
+    except BackupError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    session.add(
+        AuditEvent(
+            event_type="backup.created",
+            metadata_json={"filename": archive.name, "member_count": len(members)},
+        )
+    )
+    session.commit()
+    return templates.TemplateResponse(
+        "operations.html",
+        context(
+            request,
+            backups=sorted((settings.data_dir / "backups").glob("CareerForge-*.zip"), reverse=True),
+            message=f"Backup created and validated: {archive.name}",
+        ),
+    )
 
 
 @app.post("/imports/odt")
