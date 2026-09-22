@@ -18,6 +18,7 @@ dist/
 __pycache__/
 .pytest_cache/
 .test-tmp/
+.pytest-run-*/
 .standalone-smoke-data*/
 .coverage
 build/
