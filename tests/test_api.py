@@ -59,8 +59,10 @@ def test_browser_ui_is_served(tmp_path):
         assert "What did you get done?" in response.text
         assert "Create admin account" in response.text
         assert "Create workspace" not in response.text
-        assert client.get("/assets/app.js").status_code == 200
-        assert client.get("/assets/styles.css").status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        assert "/assets/app.js?v=0.1.2" in response.text
+        assert client.get("/assets/app.js?v=0.1.2").status_code == 200
+        assert client.get("/assets/styles.css?v=0.1.2").status_code == 200
 
 
 def test_session_endpoint_restores_csrf_after_login(tmp_path):

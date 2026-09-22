@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CareerForge</title>
-  <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="/assets/styles.css?v=0.1.2">
 </head>
 <body>
   <div id="boot" class="boot"><span class="brand-mark">CF</span><p>Opening your local CareerForge…</p></div>
@@ -23,5 +23,5 @@
       <section data-view="chat" hidden><span class="kicker">AI ASSISTANT</span><h1>Chat</h1><article class="panel"><div id="chat-log" class="chat-log"><p class="muted">Configure an AI provider in Settings to start a conversation.</p></div><form id="chat-form" class="chat-form"><label class="sr-only">Message</label><textarea name="message" rows="2" required placeholder="Ask about your accomplishments or next steps."></textarea><button>Send</button></form></article></section>
       <section data-view="settings" hidden><span class="kicker">LOCAL SETTINGS</span><h1>Settings</h1><div class="two-col"><article class="panel"><h2>AI / Ollama</h2><form id="provider-form"><label>Name<input name="display_name" value="Local Ollama" required></label><div class="grid"><label>Connection<select name="provider_class"><option value="local">Local</option><option value="remote">Remote</option></select></label><label>Model<input name="default_model" placeholder="Model name" required></label></div><label>Base URL<input name="base_url" placeholder="http://localhost:11434" required></label><label>API token <small>optional; encrypted at rest</small><input name="api_token" type="password"></label><label class="check"><input name="is_default" type="checkbox" checked> Use as default provider</label><button>Save provider</button></form><div id="providers" class="list"></div></article><article class="panel"><h2>Account security</h2><form id="password-form"><label>Current password<input name="current_password" type="password" required></label><label>New password <small>10 or more characters</small><input name="new_password" type="password" minlength="10" required></label><button>Update password</button></form></article></div></section>
     </main>
-  </div><script src="/assets/app.js"></script>
+  </div><script src="/assets/app.js?v=0.1.2"></script>
 </body></html>

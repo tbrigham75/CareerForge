@@ -6,12 +6,16 @@
   const themes = ["dark", "slate", "forest", "ocean", "sunset"];
   const tabId = (() => {
     const key = "careerforge-tab-id";
-    let value = sessionStorage.getItem(key);
-    if (!value) {
-      value = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-      sessionStorage.setItem(key, value);
+    const generated = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored) return stored;
+      sessionStorage.setItem(key, generated);
+    } catch (_) {
+      // Privacy settings can disable web storage. A temporary tab id is enough
+      // to keep the local launcher lifecycle safe for that browser session.
     }
-    return value;
+    return generated;
   })();
   const $ = (id) => document.getElementById(id);
   const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -253,6 +257,12 @@
     });
   }
 
-  bindEvents();
-  void boot();
+  try {
+    bindEvents();
+    void boot();
+  } catch (error) {
+    const bootScreen = $("boot");
+    bootScreen.textContent = `CareerForge could not start its browser client: ${error.message}`;
+    console.error("CareerForge browser startup failed", error);
+  }
 })();

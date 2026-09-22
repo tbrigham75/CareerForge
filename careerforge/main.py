@@ -187,7 +187,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def index():
-        return FileResponse(static_root / "index.html")
+        # Always reload the small HTML entry point. Versioned asset URLs then
+        # ensure a running browser cannot retain an incompatible old client.
+        return FileResponse(static_root / "index.html", headers={"Cache-Control": "no-store"})
 
     @app.get("/api/setup-status")
     def setup_status(db: Annotated[Session, Depends(db_session)]):
