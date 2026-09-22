@@ -31,6 +31,8 @@ from app.models import (
     EvidenceReference,
     GitRepositoryProfile,
     Project,
+    Report,
+    ReportItem,
     ReportTemplate,
     Skill,
     Tag,
@@ -1028,8 +1030,9 @@ def discard_ai_draft(
 def reports_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
     records = accomplishments.search(session)
     templates_list = list(session.scalars(select(ReportTemplate).order_by(ReportTemplate.name)))
+    reports = list(session.scalars(select(Report).order_by(Report.created_at.desc())))
     return templates.TemplateResponse(
-        "reports.html", context(request, records=records, templates=templates_list)
+        "reports.html", context(request, records=records, templates=templates_list, reports=reports)
     )
 
 
@@ -1083,12 +1086,65 @@ def create_report(
     return redirect(f"/reports/{report.id}/download")
 
 
+@app.get("/reports/{report_id}")
+def report_detail(
+    report_id: str, request: Request, session: SessionDependency, _: User = Depends(current_user)
+):
+    report = session.get(Report, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    items = list(
+        session.scalars(
+            select(ReportItem)
+            .where(ReportItem.report_id == report.id)
+            .order_by(ReportItem.position, ReportItem.id)
+        )
+    )
+    return templates.TemplateResponse(
+        "report_detail.html", context(request, report=report, items=items)
+    )
+
+
+@app.post("/reports/{report_id}/reorder")
+async def reorder_report_items(
+    report_id: str,
+    request: Request,
+    session: SessionDependency,
+    current: User = Depends(current_user),
+):
+    form = await request.form()
+    require_csrf(request, str(form.get("csrf", "")))
+    report = session.get(Report, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    items = list(session.scalars(select(ReportItem).where(ReportItem.report_id == report.id)))
+    item_map = {item.id: item for item in items}
+    try:
+        requested = sorted(
+            (
+                (item_id.removeprefix("position_"), int(value))
+                for item_id, value in form.items()
+                if item_id.startswith("position_") and isinstance(value, str)
+            ),
+            key=lambda pair: pair[1],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Positions must be whole numbers.") from exc
+    if {item_id for item_id, _ in requested} != set(item_map):
+        raise HTTPException(status_code=400, detail="Report item selection is invalid.")
+    for position, (item_id, _) in enumerate(requested, start=1):
+        item_map[item_id].position = position
+    session.add(
+        AuditEvent(event_type="report.items_reordered", metadata_json={"report_id": report.id})
+    )
+    session.commit()
+    return redirect(f"/reports/{report.id}")
+
+
 @app.get("/reports/{report_id}/download")
 def download_report(
     report_id: str, request: Request, session: SessionDependency, _: User = Depends(current_user)
 ):
-    from app.models import Report
-
     report = session.get(Report, report_id)
     if not report or not Path(report.output_path).is_file():
         raise HTTPException(status_code=404, detail="Report file not found.")

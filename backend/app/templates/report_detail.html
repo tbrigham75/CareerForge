@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/reports">← Reports</a></p><h1>{{ report.title }}</h1><p><a class="button" href="/reports/{{ report.id }}/download">Download .docx</a></p><section class="panel"><h2>Manual order</h2><p class="muted">Set the order for this report only. This does not edit accomplishment records or the originally generated file.</p><form action="/reports/{{ report.id }}/reorder" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><table><tr><th>Position</th><th>Snapshot title</th><th>Action</th></tr>{% for item in items %}<tr><td><input type="number" min="1" name="position_{{ item.id }}" value="{{ item.position }}"></td><td>{{ item.source_snapshot.title }}</td><td>{{ item.source_snapshot.action }}</td></tr>{% endfor %}</table><button>Save report order</button></form></section>
+{% endblock %}
