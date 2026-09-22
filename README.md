@@ -6,7 +6,7 @@ CareerForge will be a local-first, self-hosted archive for professional accompli
 
 ## Current status
 
-The current native FastAPI + SQLite build provides local administrator setup, authenticated sessions with CSRF protection, Home capture and Accomplishments, Goals with review-required AI suggestions, active-session Chat, five persistent themes, AI/Ollama provider settings, password changes, soft deletion, revision snapshots, and audit events. Reports, Markdown/Git export, projects/evidence, search, source import, and detailed editing remain planned. The architecture and phased delivery plan are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The current native FastAPI + SQLite build provides one-time local administrator setup, authenticated sessions that survive page refresh, CSRF protection, Home capture and Accomplishments, Goals with review-required AI suggestions, active-session Chat, and AI/Ollama provider settings with connection testing. The interface defaults to Dark and includes Slate, Forest, Ocean, and Sunset themes; the theme and Settings controls are compact icons in the top-right corner. Reports, Markdown/Git export, projects/evidence, search, source import, and detailed editing remain planned. The architecture and phased delivery plan are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Guiding rules
 
@@ -24,8 +24,8 @@ The current native FastAPI + SQLite build provides local administrator setup, au
 ## Proposed stack
 
 - Server-served HTML, CSS, and JavaScript interface (bundled into the executable)
-- FastAPI + SQLAlchemy + Alembic backend
-- SQLite with migrations as the authoritative local database
+- FastAPI + SQLAlchemy backend
+- SQLite as the authoritative local database (the current release creates its required tables at startup; versioned migrations are a planned hardening item)
 - `python-docx` for deterministic server-side Word output
 - Native standalone installation for Windows and Linux; no Docker dependency
 
@@ -42,10 +42,10 @@ Release builds are native executables. A Windows build bundles Python and all ap
 
 The launcher closes automatically about 15 seconds after the last CareerForge browser tab closes. Keeping any CareerForge tab open keeps the local application running.
 
-## Milestone 1 verification
+## Verification
 
-Run `.\.venv\Scripts\python.exe -m pytest -q`. The suite verifies one-time local setup, no password disclosure, authenticated raw-note CRUD with revisions and soft deletion, and CSRF enforcement.
+Run `.\.venv\Scripts\python.exe -m pytest -q`. The suite verifies one-time local setup, the 10-character password minimum, no password disclosure, authenticated raw-note CRUD with revisions and soft deletion, CSRF enforcement, the served UI, and the launcher heartbeat endpoint. `node --check careerforge\static\app.js` validates the browser client syntax.
 
 ## Next step
 
-Next: implement the browser UI, project and evidence records, search, and the safe source-document import workflow.
+Next: add schema migrations, project and evidence records, search, and the safe source-document import workflow.

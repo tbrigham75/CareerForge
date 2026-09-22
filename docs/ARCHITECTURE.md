@@ -1,4 +1,10 @@
-# CareerForge: planning milestone
+# CareerForge architecture and delivery plan
+
+## Current implementation boundary
+
+CareerForge currently delivers a one-time, local administrator account; loopback-only FastAPI server; SQLite persistence; authenticated cookie sessions with CSRF protection; raw-note accomplishment capture with revision snapshots and soft deletion; locally configured Ollama-compatible providers; review-required AI drafts and goal suggestions; and a server-served UI embedded in the Windows executable. The single-user UI has Home, Accomplishments, Goals, Chat, and Settings views. It defaults to Dark and persists five selectable themes: Dark, Slate, Forest, Ocean, and Sunset. Theme and Settings are icon controls in the top-right of the application shell.
+
+The current schema is created at application startup. Versioned schema migrations, provider URL allow-listing, remote-data confirmation, rate limiting, durable session revocation, reports, exports, projects/evidence, and search are planned hardening or delivery work; they are not represented as completed features.
 
 ## Product requirements
 
@@ -59,7 +65,7 @@ CareerForge is a native standalone application with **no Docker or Compose requi
 
 For LAN access, the administrator deliberately binds the application to a selected interface and may place Caddy, Nginx, or Traefik in front of it for TLS. The default bind is loopback only. Migrations run during controlled startup before the application is available.
 
-Secrets arrive through OS environment variables, a local protected secrets file, or a platform credential store where available; they are never committed. An application encryption key and initial-admin bootstrap secret are required. `.env.example` contains names and safe placeholders only. Backup/restore later archive the SQLite database, attachments, reports, and export worktrees with a versioned manifest.
+Secrets are never committed. The current implementation encrypts an optional provider token in the local database using a key derived from the local session secret; a platform credential store and independent rotating application key are future hardening work. The first administrator is created through the loopback-only first-run screen. Backup/restore later archive the SQLite database, attachments, reports, and export worktrees with a versioned manifest.
 
 ## Markdown export layout
 
@@ -78,10 +84,10 @@ Each record uses portable YAML front matter with UUID, dates, status, taxonomy, 
 
 ## Security and privacy plan
 
-- Local authentication with Argon2id hashes, server-side sessions, CSRF defense, rate limits, secure/HttpOnly/SameSite cookies, and session revocation.
-- Validation/authorization at API boundaries; output encoding; structured errors without secrets; audit event hashes rather than sensitive payloads by default.
-- Credentials encrypted at rest using a key from an OS environment variable, protected local secret, or platform credential store; rotation re-encrypts secrets; UI/API only reveal whether a secret exists.
-- Provider URLs are parsed and policy-checked; metadata and dangerous link-local targets are blocked; redirects are rechecked; LAN/VPN/loopback access is opt-in by admin allowlist; timeouts and response-size limits apply.
+- Local authentication with Argon2id hashes, signed HttpOnly/SameSite cookies, and CSRF defense. Rate limits and revocable server-side sessions are planned.
+- Validation at API boundaries, output encoding in the browser, structured errors without secrets, and audit events. Sensitive-payload hashing remains planned.
+- Optional provider credentials are encrypted at rest and the UI/API reveal only whether a token exists. Platform credential storage and key rotation remain planned.
+- Provider URLs must use HTTP(S), and requests use bounded timeouts. Full SSRF URL policy, redirect checks, and endpoint allow-listing are planned before treating remote providers as hardened.
 - Remote AI requires a visible classification and confirmation showing exactly what will be sent. A local-only policy can prohibit it. Confidential/do-not-sync content cannot silently transit to remote providers or Git.
 - Sensitivity policy: public-safe may use public-safe profiles; private/internal require a private profile and confirmation; confidential defaults to exclusion; do-not-sync is always excluded.
 - Git commands use an allow-listed argument interface with canonicalized paths, validated branch/remote/file names, no shell interpolation, a diff preview, and separate explicit confirmations for write, commit, and push.
@@ -91,7 +97,7 @@ Each record uses portable YAML front matter with UUID, dates, status, taxonomy, 
 | Phase | Deliverable and verification |
 | --- | --- |
 | 0 | Repository skeleton, native runtime/installer, environment docs, CI lint/test baseline; verify reproducible local startup without Docker. |
-| 1 | Auth, migrations, audit foundation, accomplishment/raw-note CRUD and revisions; API/UI and unit/integration tests. |
+| 1 | Auth, migrations, audit foundation, accomplishment/raw-note CRUD and revisions; API/UI and unit/integration tests. The current implementation has auth, audit, CRUD, revisions, UI, and tests; versioned migrations remain outstanding. |
 | 2 | Projects, evidence, taxonomy, archive search/dashboard, safe ODT seed/import; idempotency and authorization tests. |
 | 3 | Prompt templates, provider configuration, encrypted secrets, SSRF policy, Ollama adapter, structured draft/review flow; mock-adapter validation tests. |
 | 4 | Report builder and deterministic `python-docx` templates; render/structure tests and artifact metadata. |
