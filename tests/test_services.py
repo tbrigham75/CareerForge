@@ -12,6 +12,7 @@ from app.services.accomplishments import archive, create, update
 from app.services.ai import ProviderSafetyError, classify_and_validate_url
 from app.services.backup import BackupError, create_backup, validate_backup_archive
 from app.services.exporter import export_markdown
+from app.services.git_ops import GitOperationError, commit, push
 from app.services.reports import generate_docx
 
 
@@ -76,3 +77,10 @@ def test_backup_creation_and_unsafe_member_rejection(tmp_path: Path):
         bundle.writestr("../outside.txt", "no")
     with pytest.raises(BackupError):
         validate_backup_archive(unsafe)
+
+
+def test_git_mutations_require_explicit_confirmation(tmp_path: Path):
+    with pytest.raises(GitOperationError, match="Commit requires explicit confirmation"):
+        commit(tmp_path, ["entry.md"], "test", confirmed=False)
+    with pytest.raises(GitOperationError, match="Push requires explicit confirmation"):
+        push(tmp_path, "origin", "main", confirmed=False)

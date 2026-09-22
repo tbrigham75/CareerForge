@@ -111,3 +111,29 @@ def test_project_link_and_evidence(logged_in):
     detail = logged_in.get(record_path)
     assert "Account hygiene" in detail.text
     assert "CHG-123" in detail.text
+
+
+def test_local_attachment_upload_and_authenticated_download(logged_in):
+    response = logged_in.post(
+        "/capture",
+        data={
+            "csrf": token(logged_in),
+            "raw_note": "Captured validation evidence.",
+            "sensitivity": "private_personal",
+            "action_choice": "raw",
+        },
+        follow_redirects=False,
+    )
+    record_id = response.headers["location"].rsplit("/", 1)[-1]
+    response = logged_in.post(
+        f"/accomplishments/{record_id}/attachments",
+        data={"csrf": token(logged_in), "sensitivity": "internal"},
+        files={"attachment": ("validation.txt", b"validated locally", "text/plain")},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    detail = logged_in.get(f"/accomplishments/{record_id}")
+    assert "validation.txt" in detail.text
+    attachment_id = re.search(r"/attachments/([^/]+)/download", detail.text).group(1)
+    download = logged_in.get(f"/attachments/{attachment_id}/download")
+    assert download.content == b"validated locally"
