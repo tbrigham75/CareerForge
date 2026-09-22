@@ -56,7 +56,7 @@ def test_browser_ui_is_served(tmp_path):
         response = client.get("/")
         assert response.status_code == 200
         assert "CareerForge" in response.text
-        assert "I Did This" in response.text
+        assert "What did you get done?" in response.text
 
 
 def test_browser_heartbeat_is_available(tmp_path):

@@ -185,6 +185,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def setup_status(db: Annotated[Session, Depends(db_session)]):
         return {"setup_required": db.scalar(select(User.id).limit(1)) is None}
 
+    @app.get("/api/session")
+    def session_status(
+        db: Annotated[Session, Depends(db_session)],
+        careerforge_session: Annotated[str | None, Cookie()] = None,
+    ):
+        if not careerforge_session:
+            return {"authenticated": False}
+        try:
+            session = read_session(settings.session_secret, careerforge_session)
+            user = db.get(User, UUID(session["user_id"]))
+        except HTTPException:
+            return {"authenticated": False}
+        if not user:
+            return {"authenticated": False}
+        return {"authenticated": True, "username": user.username, "csrf_token": session["csrf"]}
+
     @app.post("/api/setup", status_code=status.HTTP_201_CREATED)
     def setup(payload: SetupRequest, request: Request, response: Response, db: Annotated[Session, Depends(db_session)]):
         if request.client and request.client.host not in {"127.0.0.1", "::1", "testclient"}:
