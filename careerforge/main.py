@@ -19,8 +19,8 @@ from sqlalchemy.orm import Session
 
 from .config import Settings, load_settings
 from .database import Base, make_engine, make_session_factory
-from .models import AIProvider, Accomplishment, AccomplishmentRevision, AuditEvent, User
-from .schemas import AIProviderCreate, AIProviderResponse, AccomplishmentCreate, AccomplishmentResponse, AccomplishmentUpdate, DraftRequest, DraftResponse, LoginRequest, SetupRequest
+from .models import AIProvider, Accomplishment, AccomplishmentRevision, AuditEvent, Goal, User
+from .schemas import AIProviderCreate, AIProviderResponse, AccomplishmentCreate, AccomplishmentResponse, AccomplishmentUpdate, ChatRequest, DraftRequest, DraftResponse, GoalCreate, GoalResponse, LoginRequest, PasswordChange, SetupRequest
 from .security import hash_password, issue_session, read_session, require_csrf, verify_password
 
 
@@ -131,6 +131,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return draft
         except (httpx.HTTPError, KeyError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=502, detail="AI draft failed; your original note was not changed.") from exc
+
+    @app.post("/api/chat")
+    def chat(payload: ChatRequest, db: Annotated[Session, Depends(db_session)], current: Annotated[tuple[User, dict], Depends(current_user)]):
+        provider = db.get(AIProvider, payload.provider_id) if payload.provider_id else db.scalar(select(AIProvider).where(AIProvider.is_default.is_(True), AIProvider.enabled.is_(True)))
+        if not provider: raise HTTPException(status_code=409, detail="Configure an AI provider in Settings before chatting.")
+        headers = {"Authorization": f"Bearer {cipher.decrypt(provider.encrypted_token.encode()).decode()}"} if provider.encrypted_token else {}
+        try:
+            response = httpx.post(provider.base_url.rstrip("/") + "/api/generate", headers=headers, json={"model": provider.default_model, "prompt": payload.message, "stream": False}, timeout=60.0)
+            response.raise_for_status(); reply = response.json()["response"]
+            audit(db, "ai_chat.completed", "ai_provider", str(provider.id), current[0].id); db.commit()
+            return {"reply": reply}
+        except (httpx.HTTPError, KeyError) as exc:
+            raise HTTPException(status_code=502, detail="AI chat failed; check the configured provider.") from exc
+
+    @app.get("/api/goals", response_model=list[GoalResponse])
+    def list_goals(db: Annotated[Session, Depends(db_session)], current: Annotated[tuple[User, dict], Depends(current_user)]):
+        return list(db.scalars(select(Goal).where(Goal.user_id == current[0].id).order_by(Goal.created_at.desc())))
+
+    @app.post("/api/goals", response_model=GoalResponse, status_code=201)
+    def create_goal(payload: GoalCreate, db: Annotated[Session, Depends(db_session)], current: Annotated[tuple[User, dict], Depends(current_user)]):
+        goal = Goal(user_id=current[0].id, **payload.model_dump()); db.add(goal); db.flush(); audit(db, "goal.created", "goal", str(goal.id), current[0].id); db.commit(); db.refresh(goal); return goal
+
+    @app.post("/api/password")
+    def change_password(payload: PasswordChange, db: Annotated[Session, Depends(db_session)], current: Annotated[tuple[User, dict], Depends(current_user)]):
+        user = current[0]
+        if not verify_password(user.password_hash, payload.current_password): raise HTTPException(status_code=400, detail="Current password is incorrect.")
+        user.password_hash = hash_password(payload.new_password); audit(db, "auth.password_changed", "user", str(user.id), user.id); db.commit()
+        return {"ok": True}
 
     @app.get("/", include_in_schema=False)
     def index():

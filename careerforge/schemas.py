@@ -83,3 +83,25 @@ class DraftResponse(BaseModel):
     placeholders_requiring_confirmation: list[str]
     follow_up_questions: list[str]
     confidence_notes: str
+
+
+class GoalCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    details: str | None = Field(default=None, max_length=5000)
+
+
+class GoalResponse(GoalCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    status: str
+    created_at: datetime
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=10, max_length=256)
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=20_000)
+    provider_id: UUID | None = None
