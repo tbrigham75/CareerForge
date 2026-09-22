@@ -1,1 +1,0 @@
-"""CareerForge native standalone application."""
