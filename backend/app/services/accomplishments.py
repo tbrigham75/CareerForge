@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import String, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Accomplishment, AccomplishmentRevision, AuditEvent
+from app.models import Accomplishment, AccomplishmentRevision, AuditEvent, Project
 from app.schemas import AccomplishmentInput
 
 
@@ -104,7 +104,15 @@ def soft_delete(session: Session, record: Accomplishment) -> None:
 
 
 def search(
-    session: Session, query: str = "", include_archived: bool = False
+    session: Session,
+    query: str = "",
+    include_archived: bool = False,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    sensitivity: str = "",
+    tag: str = "",
+    technology: str = "",
+    project_id: str = "",
 ) -> list[Accomplishment]:
     statement = select(Accomplishment).where(Accomplishment.deleted_at.is_(None))
     if not include_archived:
@@ -119,4 +127,18 @@ def search(
                 Accomplishment.tags.cast(String).ilike(like),
             )
         )
+    if date_from:
+        statement = statement.where(Accomplishment.date_completed >= date_from)
+    if date_to:
+        statement = statement.where(Accomplishment.date_completed <= date_to)
+    if sensitivity:
+        statement = statement.where(Accomplishment.sensitivity == sensitivity)
+    if tag.strip():
+        statement = statement.where(Accomplishment.tags.cast(String).ilike(f"%{tag.strip()}%"))
+    if technology.strip():
+        statement = statement.where(
+            Accomplishment.technologies.cast(String).ilike(f"%{technology.strip()}%")
+        )
+    if project_id:
+        statement = statement.where(Accomplishment.projects.any(Project.id == project_id))
     return list(session.scalars(statement.order_by(Accomplishment.updated_at.desc())))

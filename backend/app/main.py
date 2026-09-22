@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import secrets
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from time import perf_counter
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -21,9 +24,17 @@ from app.models import (
     Accomplishment,
     AIDraft,
     AIProvider,
+    AttachmentMetadata,
     AuditEvent,
+    Category,
+    Competency,
     EvidenceReference,
+    GitRepositoryProfile,
     Project,
+    ReportTemplate,
+    Skill,
+    Tag,
+    Technology,
     User,
 )
 from app.schemas import AccomplishmentInput, AIProviderInput
@@ -35,11 +46,12 @@ from app.security import (
     require_csrf,
     verify_password,
 )
-from app.services import accomplishments
+from app.services import accomplishments, git_ops
 from app.services.ai import (
     ProviderSafetyError,
     classify_and_validate_url,
     generate_draft,
+    list_models,
 )
 from app.services.exporter import export_markdown
 from app.services.reports import generate_docx
@@ -334,14 +346,40 @@ def archive(
     _: User = Depends(current_user),
     q: str = "",
     archived: bool = False,
+    date_from: str = "",
+    date_to: str = "",
+    sensitivity: str = "",
+    tag: str = "",
+    technology: str = "",
+    project_id: str = "",
 ):
+    filters = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "sensitivity": sensitivity,
+        "tag": tag,
+        "technology": technology,
+        "project_id": project_id,
+    }
     return templates.TemplateResponse(
         "accomplishments.html",
         context(
             request,
-            records=accomplishments.search(session, q, archived),
+            records=accomplishments.search(
+                session,
+                q,
+                archived,
+                parse_date(date_from),
+                parse_date(date_to),
+                sensitivity,
+                tag,
+                technology,
+                project_id,
+            ),
             query=q,
             archived=archived,
+            projects=list(session.scalars(select(Project).order_by(Project.name))),
+            filters=filters,
         ),
     )
 
@@ -367,8 +405,75 @@ def detail(
             drafts=list(
                 session.scalars(select(AIDraft).where(AIDraft.accomplishment_id == record.id))
             ),
+            attachments=list(
+                session.scalars(
+                    select(AttachmentMetadata).where(
+                        AttachmentMetadata.accomplishment_id == record.id
+                    )
+                )
+            ),
         ),
     )
+
+
+@app.get("/accomplishments/{record_id}/edit")
+def edit_accomplishment_page(
+    record_id: str,
+    request: Request,
+    session: SessionDependency,
+    _: User = Depends(current_user),
+):
+    return templates.TemplateResponse(
+        "edit_accomplishment.html", context(request, record=get_record(session, record_id))
+    )
+
+
+@app.post("/accomplishments/{record_id}/edit")
+def edit_accomplishment(
+    record_id: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    title: Annotated[str, Form()] = "",
+    raw_note: Annotated[str, Form()] = "",
+    action: Annotated[str, Form()] = "",
+    metric: Annotated[str, Form()] = "",
+    impact: Annotated[str, Form()] = "",
+    supporting_narrative: Annotated[str, Form()] = "",
+    date_started: Annotated[str, Form()] = "",
+    date_completed: Annotated[str, Form()] = "",
+    systems: Annotated[str, Form()] = "",
+    technologies: Annotated[str, Form()] = "",
+    tags: Annotated[str, Form()] = "",
+    categories: Annotated[str, Form()] = "",
+    sensitivity: Annotated[str, Form()] = "private_personal",
+    github_export: Annotated[bool, Form()] = False,
+    status: Annotated[str, Form()] = "draft",
+    approval_status: Annotated[str, Form()] = "draft",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    record = get_record(session, record_id)
+    data = form_to_accomplishment(
+        title,
+        raw_note,
+        action,
+        metric,
+        impact,
+        supporting_narrative,
+        date_started,
+        date_completed,
+        systems,
+        technologies,
+        tags,
+        categories,
+        sensitivity,
+        github_export,
+        status,
+        approval_status,
+    )
+    accomplishments.update(session, record, data, "manually_edited")
+    return redirect(f"/accomplishments/{record.id}")
 
 
 @app.post("/accomplishments/{record_id}/archive")
@@ -402,6 +507,45 @@ def delete(
 def projects_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
     projects = list(session.scalars(select(Project).order_by(Project.name)))
     return templates.TemplateResponse("projects.html", context(request, projects=projects))
+
+
+TAXONOMY_MODELS = {
+    "category": Category,
+    "tag": Tag,
+    "technology": Technology,
+    "skill": Skill,
+    "competency": Competency,
+}
+
+
+@app.get("/taxonomy")
+def taxonomy_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
+    items = {
+        name: list(session.scalars(select(model).order_by(model.name)))
+        for name, model in TAXONOMY_MODELS.items()
+    }
+    return templates.TemplateResponse("taxonomy.html", context(request, items=items))
+
+
+@app.post("/taxonomy")
+def create_taxonomy_item(
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    kind: Annotated[str, Form()],
+    name: Annotated[str, Form()],
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    model = TAXONOMY_MODELS.get(kind)
+    if not model or not name.strip():
+        raise HTTPException(status_code=400, detail="Choose a taxonomy type and provide a name.")
+    if session.scalar(select(model).where(model.name == name.strip())):
+        return redirect("/taxonomy")
+    session.add(model(name=name.strip()))
+    session.add(AuditEvent(event_type="taxonomy.created", metadata_json={"kind": kind}))
+    session.commit()
+    return redirect("/taxonomy")
 
 
 @app.post("/projects")
@@ -456,6 +600,92 @@ def add_evidence(
     session.add(AuditEvent(event_type="evidence.created", metadata_json={"record_id": record.id}))
     session.commit()
     return redirect(f"/accomplishments/{record.id}")
+
+
+@app.post("/accomplishments/{record_id}/attachments")
+async def upload_attachment(
+    record_id: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    attachment: UploadFile,
+    sensitivity: Annotated[str, Form()] = "private_personal",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    record = get_record(session, record_id)
+    if sensitivity not in {
+        "public_safe",
+        "private_personal",
+        "internal",
+        "confidential",
+        "do_not_sync",
+    }:
+        raise HTTPException(status_code=400, detail="Unsupported attachment sensitivity.")
+    original_name = Path(attachment.filename or "attachment").name
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", original_name).strip(".-") or "attachment"
+    content = await attachment.read(settings.max_attachment_bytes + 1)
+    if not content:
+        raise HTTPException(status_code=400, detail="Attachment is empty.")
+    if len(content) > settings.max_attachment_bytes:
+        raise HTTPException(status_code=413, detail="Attachment exceeds the configured size limit.")
+    content_hash = hashlib.sha256(content).hexdigest()
+    existing = session.scalar(
+        select(AttachmentMetadata).where(
+            AttachmentMetadata.accomplishment_id == record.id,
+            AttachmentMetadata.content_hash == content_hash,
+        )
+    )
+    if existing:
+        return redirect(f"/accomplishments/{record.id}")
+    storage = settings.data_dir / "attachments" / record.id
+    storage.mkdir(parents=True, exist_ok=True)
+    stored = storage / f"{content_hash[:16]}-{safe_stem}"
+    stored.write_bytes(content)
+    metadata = AttachmentMetadata(
+        accomplishment_id=record.id,
+        original_filename=original_name,
+        stored_path=str(stored),
+        content_hash=content_hash,
+        sensitivity=sensitivity,
+    )
+    session.add(metadata)
+    session.add(
+        AuditEvent(
+            event_type="attachment.uploaded",
+            metadata_json={
+                "record_id": record.id,
+                "attachment_id": metadata.id,
+                "bytes": len(content),
+            },
+        )
+    )
+    session.commit()
+    return redirect(f"/accomplishments/{record.id}")
+
+
+@app.get("/attachments/{attachment_id}/download")
+def download_attachment(
+    attachment_id: str,
+    request: Request,
+    session: SessionDependency,
+    _: User = Depends(current_user),
+):
+    metadata = session.get(AttachmentMetadata, attachment_id)
+    stored = Path(metadata.stored_path) if metadata else None
+    attachment_root = (settings.data_dir / "attachments").resolve()
+    if (
+        not metadata
+        or not stored
+        or not stored.is_file()
+        or attachment_root not in stored.resolve().parents
+    ):
+        raise HTTPException(status_code=404, detail="Attachment not found.")
+    session.add(
+        AuditEvent(event_type="attachment.downloaded", metadata_json={"attachment_id": metadata.id})
+    )
+    session.commit()
+    return FileResponse(stored, filename=metadata.original_filename)
 
 
 @app.get("/providers")
@@ -521,6 +751,124 @@ def add_provider(
             context(request, providers=list(session.scalars(select(AIProvider))), error=str(exc)),
             status_code=400,
         )
+
+
+@app.post("/providers/{provider_id}/test")
+async def test_provider(
+    provider_id: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    provider = session.get(AIProvider, provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="AI provider not found.")
+    started = perf_counter()
+    try:
+        models = await list_models(provider)
+        provider.last_test_at = datetime.now(UTC)
+        provider.health_state = "healthy"
+        session.add(
+            AuditEvent(
+                event_type="provider.tested",
+                metadata_json={
+                    "provider_id": provider.id,
+                    "latency_ms": round((perf_counter() - started) * 1000),
+                    "model_count": len(models),
+                },
+            )
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            "providers.html",
+            context(
+                request,
+                providers=list(session.scalars(select(AIProvider).order_by(AIProvider.priority))),
+                models=models,
+                message=f"Connection succeeded in {round((perf_counter() - started) * 1000)} ms.",
+            ),
+        )
+    except Exception as exc:
+        provider.last_test_at = datetime.now(UTC)
+        provider.health_state = "failed"
+        session.add(
+            AuditEvent(
+                event_type="provider.tested",
+                outcome="failed",
+                metadata_json={"provider_id": provider.id, "error_class": type(exc).__name__},
+            )
+        )
+        session.commit()
+        return templates.TemplateResponse(
+            "providers.html",
+            context(
+                request,
+                providers=list(session.scalars(select(AIProvider).order_by(AIProvider.priority))),
+                error=f"Connection test failed: {type(exc).__name__}.",
+            ),
+            status_code=502,
+        )
+
+
+@app.post("/providers/{provider_id}/rotate-secrets")
+def rotate_provider_secrets(
+    provider_id: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    api_key: Annotated[str, Form()] = "",
+    bearer_token: Annotated[str, Form()] = "",
+    custom_headers: Annotated[str, Form()] = "",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    provider = session.get(AIProvider, provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="AI provider not found.")
+    try:
+        headers = json.loads(custom_headers) if custom_headers.strip() else {}
+        if not isinstance(headers, dict) or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in headers.items()
+        ):
+            raise ValueError("Custom headers must be a JSON object with string values.")
+        provider.encrypted_api_key = encrypt_secret(api_key)
+        provider.encrypted_bearer_token = encrypt_secret(bearer_token)
+        provider.encrypted_headers = encrypt_secret(json.dumps(headers))
+    except (ValueError, json.JSONDecodeError) as exc:
+        return templates.TemplateResponse(
+            "providers.html",
+            context(request, providers=list(session.scalars(select(AIProvider))), error=str(exc)),
+            status_code=400,
+        )
+    session.add(
+        AuditEvent(
+            event_type="provider.secrets_rotated", metadata_json={"provider_id": provider.id}
+        )
+    )
+    session.commit()
+    return redirect("/providers")
+
+
+@app.post("/providers/{provider_id}/delete")
+def delete_provider(
+    provider_id: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    provider = session.get(AIProvider, provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="AI provider not found.")
+    session.add(
+        AuditEvent(event_type="provider.deleted", metadata_json={"provider_id": provider.id})
+    )
+    session.delete(provider)
+    session.commit()
+    return redirect("/providers")
 
 
 @app.get("/ai/draft/{record_id}")
@@ -648,10 +996,63 @@ def approve_ai_draft(
     return redirect(f"/accomplishments/{record.id}")
 
 
+@app.post("/ai/draft/{record_id}/discard")
+def discard_ai_draft(
+    record_id: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    draft_id: Annotated[str, Form()],
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    record = get_record(session, record_id)
+    draft = session.get(AIDraft, draft_id)
+    if not draft or draft.accomplishment_id != record.id:
+        raise HTTPException(status_code=404, detail="Draft not found.")
+    draft.status = "discarded"
+    session.add(
+        AuditEvent(
+            event_type="ai.draft_discarded",
+            metadata_json={"record_id": record.id, "draft_id": draft.id},
+        )
+    )
+    session.commit()
+    return redirect(f"/accomplishments/{record.id}")
+
+
 @app.get("/reports")
 def reports_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
     records = accomplishments.search(session)
-    return templates.TemplateResponse("reports.html", context(request, records=records))
+    templates_list = list(session.scalars(select(ReportTemplate).order_by(ReportTemplate.name)))
+    return templates.TemplateResponse(
+        "reports.html", context(request, records=records, templates=templates_list)
+    )
+
+
+@app.post("/reports/templates")
+def create_report_template(
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    name: Annotated[str, Form()],
+    content: Annotated[str, Form()] = "",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    if not name.strip():
+        raise HTTPException(status_code=400, detail="Template name is required.")
+    if session.scalar(select(ReportTemplate).where(ReportTemplate.name == name.strip())):
+        raise HTTPException(
+            status_code=409, detail="A report template with that name already exists."
+        )
+    template = ReportTemplate(name=name.strip(), content=content.strip())
+    session.add(template)
+    session.add(
+        AuditEvent(event_type="report_template.created", metadata_json={"template_id": template.id})
+    )
+    session.commit()
+    return redirect("/reports")
 
 
 @app.post("/reports")
@@ -697,7 +1098,94 @@ def download_report(
 
 @app.get("/exports")
 def exports_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
-    return templates.TemplateResponse("exports.html", context(request))
+    profiles = list(
+        session.scalars(select(GitRepositoryProfile).order_by(GitRepositoryProfile.name))
+    )
+    return templates.TemplateResponse("exports.html", context(request, profiles=profiles))
+
+
+@app.post("/exports/profiles")
+def create_export_profile(
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    name: Annotated[str, Form()],
+    repository_path: Annotated[str, Form()],
+    branch: Annotated[str, Form()] = "main",
+    export_subdirectory: Annotated[str, Form()] = "accomplishments",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    path = Path(repository_path).expanduser().resolve()
+    if not name.strip() or not path.is_dir():
+        raise HTTPException(
+            status_code=400, detail="Provide a profile name and an existing repository directory."
+        )
+    if Path(export_subdirectory).is_absolute() or ".." in Path(export_subdirectory).parts:
+        raise HTTPException(
+            status_code=400,
+            detail="Export subdirectory must be a relative path inside the repository.",
+        )
+    try:
+        git_ops.status(path)
+    except git_ops.GitOperationError as exc:
+        raise HTTPException(
+            status_code=400, detail="The selected path is not a healthy Git repository."
+        ) from exc
+    if session.scalar(
+        select(GitRepositoryProfile).where(GitRepositoryProfile.name == name.strip())
+    ):
+        raise HTTPException(
+            status_code=409, detail="An export profile with that name already exists."
+        )
+    profile = GitRepositoryProfile(
+        name=name.strip(),
+        repository_path=str(path),
+        branch=branch.strip() or "main",
+        export_subdirectory=export_subdirectory.strip() or "accomplishments",
+    )
+    session.add(profile)
+    session.add(
+        AuditEvent(event_type="git_profile.created", metadata_json={"profile_id": profile.id})
+    )
+    session.commit()
+    return redirect("/exports")
+
+
+@app.get("/exports/{profile_id}/preview")
+def export_preview(
+    profile_id: str, request: Request, session: SessionDependency, _: User = Depends(current_user)
+):
+    profile = session.get(GitRepositoryProfile, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Export profile not found.")
+    try:
+        repo_status = git_ops.status(Path(profile.repository_path))
+        repo_diff = git_ops.diff(Path(profile.repository_path))
+    except git_ops.GitOperationError as exc:
+        return templates.TemplateResponse(
+            "exports.html",
+            context(
+                request,
+                profiles=list(session.scalars(select(GitRepositoryProfile))),
+                error=f"Git preview failed: {exc}",
+            ),
+            status_code=400,
+        )
+    manifest = export_markdown(
+        session, Path(profile.repository_path) / profile.export_subdirectory, dry_run=True
+    )
+    return templates.TemplateResponse(
+        "exports.html",
+        context(
+            request,
+            profiles=list(session.scalars(select(GitRepositoryProfile))),
+            active_profile=profile,
+            manifest=manifest,
+            repo_status=repo_status,
+            repo_diff=repo_diff,
+        ),
+    )
 
 
 @app.post("/exports/dry-run")
@@ -709,7 +1197,56 @@ def export_dry_run(
 ):
     require_csrf(request, csrf)
     manifest = export_markdown(session, settings.data_dir / "temp" / "dry-run", dry_run=True)
-    return templates.TemplateResponse("exports.html", context(request, manifest=manifest))
+    return templates.TemplateResponse(
+        "exports.html",
+        context(
+            request,
+            profiles=list(session.scalars(select(GitRepositoryProfile))),
+            manifest=manifest,
+        ),
+    )
+
+
+@app.post("/exports/{profile_id}/apply")
+def apply_export(
+    profile_id: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    confirmation: Annotated[str, Form()],
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    if confirmation != "EXPORT":
+        raise HTTPException(
+            status_code=400,
+            detail="Type EXPORT to write Markdown files to the selected repository.",
+        )
+    profile = session.get(GitRepositoryProfile, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Export profile not found.")
+    manifest = export_markdown(
+        session, Path(profile.repository_path) / profile.export_subdirectory, dry_run=False
+    )
+    files_value = manifest.get("files")
+    file_count = len(files_value) if isinstance(files_value, list) else 0
+    session.add(
+        AuditEvent(
+            event_type="git_export.applied",
+            metadata_json={"profile_id": profile.id, "count": file_count},
+        )
+    )
+    session.commit()
+    return templates.TemplateResponse(
+        "exports.html",
+        context(
+            request,
+            profiles=list(session.scalars(select(GitRepositoryProfile))),
+            active_profile=profile,
+            manifest=manifest,
+            message="Markdown files were written. Review the Git preview before staging or committing.",
+        ),
+    )
 
 
 @app.get("/audit")

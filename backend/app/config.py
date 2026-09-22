@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     allow_private_http: bool = True
     max_ai_response_bytes: int = 1_048_576
+    max_attachment_bytes: int = 25 * 1024 * 1024
     encryption_key: str = ""
 
     @property
