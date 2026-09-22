@@ -30,6 +30,7 @@ from app.models import (
     Competency,
     EvidenceReference,
     GitRepositoryProfile,
+    ImportRun,
     Project,
     Report,
     ReportItem,
@@ -56,6 +57,7 @@ from app.services.ai import (
     list_models,
 )
 from app.services.exporter import export_markdown
+from app.services.importer import import_odt
 from app.services.reports import generate_docx
 
 settings = get_settings()
@@ -1314,3 +1316,37 @@ def audit(request: Request, session: SessionDependency, _: User = Depends(curren
         session.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(100))
     )
     return templates.TemplateResponse("audit.html", context(request, events=events))
+
+
+@app.get("/imports")
+def imports_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
+    runs = list(session.scalars(select(ImportRun).order_by(ImportRun.created_at.desc()).limit(100)))
+    return templates.TemplateResponse("imports.html", context(request, runs=runs))
+
+
+@app.post("/imports/odt")
+def import_odt_source(
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    source_path: Annotated[str, Form()],
+    confirmation: Annotated[str, Form()],
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    if confirmation != "IMPORT":
+        raise HTTPException(status_code=400, detail="Type IMPORT to read the selected ODT source.")
+    source = Path(source_path).expanduser().resolve()
+    if source.suffix.lower() != ".odt" or not source.is_file():
+        raise HTTPException(status_code=400, detail="Provide an existing local .odt file.")
+    run = import_odt(session, source)
+    return templates.TemplateResponse(
+        "imports.html",
+        context(
+            request,
+            runs=list(
+                session.scalars(select(ImportRun).order_by(ImportRun.created_at.desc()).limit(100))
+            ),
+            message=f"Import status: {run.status}; records added: {run.imported_count}.",
+        ),
+    )

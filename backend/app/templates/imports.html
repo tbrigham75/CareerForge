@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Import source document</h1><p class="notice">CareerForge reads source files only. It records path, filename, hash, time, and status; a completed source hash is skipped on re-import to prevent duplicate accomplishments.</p>
+<form action="/imports/odt" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label>Local ODT source path<input name="source_path" placeholder="C:\Users\you\Documents\Brag Sheet.odt" required></label><label>Type IMPORT to confirm reading this source<input name="confirmation" required></label><button>Import ODT</button></form>
+<section class="panel"><h2>Import history</h2><table><tr><th>When</th><th>Source</th><th>Status</th><th>Records</th></tr>{% for run in runs %}<tr><td>{{ run.created_at }}</td><td>{{ run.filename }}</td><td>{{ run.status }}</td><td>{{ run.imported_count }}</td></tr>{% else %}<tr><td colspan="4">No imports run yet.</td></tr>{% endfor %}</table></section>
+{% endblock %}
