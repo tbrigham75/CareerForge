@@ -40,6 +40,7 @@ class AIProviderInput(BaseModel):
     bearer_token: str = Field(default="", max_length=10000, exclude=True)
     custom_headers: dict[str, str] = Field(default_factory=dict, exclude=True)
     timeout_seconds: int = Field(default=60, ge=1, le=300)
+    retry_attempts: int = Field(default=1, ge=0, le=1)
 
 
 class AIDraftResponse(BaseModel):

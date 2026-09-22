@@ -711,6 +711,7 @@ def add_provider(
     bearer_token: Annotated[str, Form()] = "",
     custom_headers: Annotated[str, Form()] = "",
     timeout_seconds: Annotated[int, Form()] = 60,
+    retry_attempts: Annotated[int, Form()] = 1,
     _: User = Depends(current_user),
 ):
     require_csrf(request, csrf)
@@ -724,6 +725,7 @@ def add_provider(
             bearer_token=bearer_token,
             custom_headers=headers,
             timeout_seconds=timeout_seconds,
+            retry_attempts=retry_attempts,
         )
         classification = classify_and_validate_url(input_data.base_url)
         provider = AIProvider(
@@ -731,6 +733,7 @@ def add_provider(
             base_url=input_data.base_url,
             default_model=input_data.default_model,
             timeout_seconds=input_data.timeout_seconds,
+            retry_attempts=input_data.retry_attempts,
             classification=classification,
             encrypted_api_key=encrypt_secret(input_data.api_key),
             encrypted_bearer_token=encrypt_secret(input_data.bearer_token),

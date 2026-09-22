@@ -202,6 +202,7 @@ class AIProvider(Base):
     encrypted_headers: Mapped[str] = mapped_column(Text, default="")
     default_model: Mapped[str] = mapped_column(String(200), default="")
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    retry_attempts: Mapped[int] = mapped_column(Integer, default=1)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     priority: Mapped[int] = mapped_column(Integer, default=100)

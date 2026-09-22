@@ -116,19 +116,35 @@ async def generate_draft(
     timeout = httpx.Timeout(provider.timeout_seconds)
     max_bytes = get_settings().max_ai_response_bytes
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-        response = await client.post(endpoint, headers=_headers(provider), json=payload)
-        response.raise_for_status()
-        content = response.content
-    if len(content) > max_bytes:
-        raise ProviderSafetyError("Provider response exceeded the configured size limit.")
-    try:
-        response_json = json.loads(content)
-        result = json.loads(response_json["response"])
-        return AIDraftResponse.model_validate(result)
-    except (KeyError, TypeError, json.JSONDecodeError, ValidationError) as exc:
-        raise ProviderSafetyError(
-            "The provider returned invalid structured JSON; no draft was saved."
-        ) from exc
+        retry_attempts = min(max(provider.retry_attempts, 0), 1)
+        for attempt in range(retry_attempts + 1):
+            try:
+                response = await client.post(endpoint, headers=_headers(provider), json=payload)
+                response.raise_for_status()
+                content = response.content
+                if len(content) > max_bytes:
+                    raise ProviderSafetyError(
+                        "Provider response exceeded the configured size limit."
+                    )
+                response_json = json.loads(content)
+                result = json.loads(response_json["response"])
+                return AIDraftResponse.model_validate(result)
+            except (
+                httpx.HTTPError,
+                KeyError,
+                TypeError,
+                json.JSONDecodeError,
+                ValidationError,
+            ) as exc:
+                if attempt >= retry_attempts:
+                    raise ProviderSafetyError(
+                        "The provider returned invalid structured JSON; no draft was saved."
+                    ) from exc
+                payload["prompt"] = (
+                    _prompt(raw_note, metadata)
+                    + "\nRepair attempt: return only a valid JSON object matching the requested schema."
+                )
+    raise ProviderSafetyError("Provider did not return a usable draft.")
 
 
 async def list_models(provider: AIProvider) -> list[str]:
