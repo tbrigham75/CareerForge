@@ -1,0 +1,42 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local configuration and data
+.env
+.env.*
+!.env.example
+*.key
+*.db
+*.sqlite
+*.sqlite3
+data/
+attachments/
+exports/
+reports/
+backups/
+logs/
+secrets/
+temp/
+
+# User source material - deliberately retained locally, never committed
+Tom's Brag Sheet.odt
+
+# Node and editors
+node_modules/
+.vscode/
+.idea/
+*.swp
+
+# Operating system and generated files
+Thumbs.db
+.DS_Store
+dist/
+build/
+*.docx

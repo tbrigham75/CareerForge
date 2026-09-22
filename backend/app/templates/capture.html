@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>I Did This</h1>
+<p class="notice">Save a factual raw note without AI, or create a completed manual accomplishment. AI drafts require your review and approval.</p>
+<form action="/capture" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><div class="grid">
+<div class="wide"><label>What did you do?<textarea name="raw_note" placeholder="Example: I patched four Linux servers affected by a critical vulnerability and verified the services afterward.">{{ record.raw_note if record else '' }}</textarea></label></div>
+<label>Title<input name="title" value="{{ record.title if record else '' }}"></label>
+<label>Project<select name="project_id"><option value="">No project</option>{% for project in projects %}<option value="{{ project.id }}">{{ project.name }}</option>{% endfor %}</select></label>
+<label>Completion date<input type="date" name="date_completed"></label><label>Start date<input type="date" name="date_started"></label>
+<label>Sensitivity<select name="sensitivity"><option value="private_personal">Private personal</option><option value="public_safe">Public safe</option><option value="internal">Internal</option><option value="confidential">Confidential</option><option value="do_not_sync">Do not sync</option></select></label>
+<label>Systems / services (comma-separated)<input name="systems"></label><label>Technologies (comma-separated)<input name="technologies"></label><label>Tags (comma-separated)<input name="tags"></label><label>Categories (comma-separated)<input name="categories"></label>
+<label class="wide">Action<textarea name="action"></textarea></label><label>Metric<textarea name="metric"></textarea></label><label>Impact<textarea name="impact"></textarea></label><label class="wide">Supporting evidence / notes<textarea name="supporting_narrative"></textarea></label><label><input type="checkbox" name="github_export" value="true"> Eligible for Markdown export after approval</label></div>
+<p><button name="action_choice" value="raw">Save Raw Note</button><button class="secondary" name="action_choice" value="completed">Save Completed Accomplishment</button>{% if providers %}<select name="provider_id">{% for provider in providers %}<option value="{{ provider.id }}">{{ provider.display_name }} — {{ provider.default_model }}</option>{% endfor %}</select><button class="secondary" name="action_choice" value="draft">Draft with AI</button>{% endif %}</p></form>
+{% endblock %}

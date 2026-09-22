@@ -1,0 +1,17 @@
+:root { color-scheme: light; --ink: #1f2937; --muted: #64748b; --line: #dbe2ea; --panel: #fff; --canvas: #f4f7fa; --accent: #155e75; --danger: #b91c1c; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { background: #102a43; color: white; padding: 0.8rem 1.5rem; display: flex; gap: 1.5rem; align-items: center; }
+header a { color: #d9e2ec; text-decoration: none; } header a:hover { color: white; }
+.brand { font-weight: 700; color: white; margin-right: auto; } nav { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; }
+main { max-width: 1120px; padding: 2rem 1.25rem; margin: auto; }
+.panel, form { background: var(--panel); border: 1px solid var(--line); border-radius: .5rem; padding: 1.25rem; margin-bottom: 1rem; box-shadow: 0 1px 2px #102a4310; }
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); } .wide { grid-column: 1 / -1; }
+label { display: block; font-weight: 600; margin: .4rem 0; } input, textarea, select { width: 100%; padding: .6rem; border: 1px solid #9fb3c8; border-radius: .25rem; background: white; font: inherit; }
+textarea { min-height: 7rem; } button, .button { display: inline-block; cursor: pointer; border: 0; border-radius: .3rem; padding: .6rem .9rem; background: var(--accent); color: white; font: inherit; text-decoration: none; margin: .25rem .3rem .25rem 0; }
+button.secondary, .button.secondary { background: #52606d; } button.danger { background: var(--danger); } .inline { display: inline; border: 0; padding: 0; box-shadow: none; background: none; }
+.notice { padding: .8rem; border-radius: .25rem; background: #e0f2fe; border-left: 4px solid #0369a1; } .error { background: #fee2e2; border-left-color: var(--danger); }
+.muted { color: var(--muted); } .record { border-left: 4px solid #155e75; } .status { font-size: .85rem; background: #d9e2ec; padding: .2rem .45rem; border-radius: 1rem; }
+table { border-collapse: collapse; width: 100%; background: white; } th, td { padding: .6rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+pre { overflow: auto; white-space: pre-wrap; background: #102a43; color: #f0f4f8; padding: 1rem; border-radius: .25rem; }
+@media (max-width: 760px) { header { display: block; } nav { margin-top: .6rem; } main { padding: 1rem .75rem; } }
