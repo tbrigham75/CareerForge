@@ -73,4 +73,7 @@ def test_session_endpoint_restores_csrf_after_login(tmp_path):
 
 def test_browser_heartbeat_is_available(tmp_path):
     with make_client(tmp_path) as client:
-        assert client.post("/api/client-heartbeat").status_code == 204
+        assert client.post("/api/client-heartbeat?client_id=first-tab").status_code == 204
+        assert "first-tab" in client.app.state.client_tabs
+        assert client.post("/api/client-closed?client_id=first-tab").status_code == 204
+        assert "first-tab" not in client.app.state.client_tabs

@@ -4,6 +4,15 @@
   let csrfToken = "";
   let heartbeatId;
   const themes = ["dark", "slate", "forest", "ocean", "sunset"];
+  const tabId = (() => {
+    const key = "careerforge-tab-id";
+    let value = sessionStorage.getItem(key);
+    if (!value) {
+      value = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+      sessionStorage.setItem(key, value);
+    }
+    return value;
+  })();
   const $ = (id) => document.getElementById(id);
   const $$ = (selector) => Array.from(document.querySelectorAll(selector));
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
@@ -116,7 +125,7 @@
   }
 
   async function heartbeat() {
-    try { await fetch("/api/client-heartbeat", { method: "POST", keepalive: true }); } catch (_) { /* launcher will exit if the local page is gone */ }
+    try { await fetch(`/api/client-heartbeat?client_id=${encodeURIComponent(tabId)}`, { method: "POST", keepalive: true }); } catch (_) { /* launcher will exit if the local page is gone */ }
   }
 
   function startHeartbeat() {
@@ -238,7 +247,10 @@
       catch (error) { setNotice(error.message, "error"); }
     });
     $("logout").addEventListener("click", async () => { try { await api("/api/logout", { method: "POST" }); } finally { csrfToken = ""; clearInterval(heartbeatId); location.reload(); } });
-    window.addEventListener("pagehide", () => { clearInterval(heartbeatId); navigator.sendBeacon("/api/client-heartbeat"); });
+    window.addEventListener("pagehide", () => {
+      clearInterval(heartbeatId);
+      navigator.sendBeacon(`/api/client-closed?client_id=${encodeURIComponent(tabId)}`);
+    });
   }
 
   bindEvents();

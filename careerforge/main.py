@@ -50,8 +50,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="CareerForge", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.sessions = sessions
+    # A browser may have multiple CareerForge tabs. Track each independently so
+    # closing one tab does not stop the local service while another remains open.
     app.state.client_seen = False
-    app.state.last_client_heartbeat = 0.0
+    app.state.client_tabs: dict[str, float] = {}
     cipher = Fernet(urlsafe_b64encode(sha256(settings.session_secret.encode()).digest()))
     app.add_middleware(CORSMiddleware, allow_origins=[], allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type", "X-CSRF-Token"])
 
@@ -87,9 +89,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok", "mode": "native-standalone"}
 
     @app.post("/api/client-heartbeat", status_code=status.HTTP_204_NO_CONTENT)
-    def client_heartbeat():
+    def client_heartbeat(request: Request):
+        client_id = request.query_params.get("client_id", "legacy")[:128]
         app.state.client_seen = True
-        app.state.last_client_heartbeat = time.monotonic()
+        app.state.client_tabs[client_id] = time.monotonic()
+
+    @app.post("/api/client-closed", status_code=status.HTTP_204_NO_CONTENT)
+    def client_closed(request: Request):
+        client_id = request.query_params.get("client_id", "legacy")[:128]
+        app.state.client_tabs.pop(client_id, None)
 
     @app.get("/api/ai-providers", response_model=list[AIProviderResponse])
     def list_ai_providers(db: Annotated[Session, Depends(db_session)], _: Annotated[tuple[User, dict], Depends(current_user)]):
