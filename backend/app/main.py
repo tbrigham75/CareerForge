@@ -29,6 +29,7 @@ from app.models import (
     Category,
     Competency,
     EvidenceReference,
+    ExportRun,
     GitRepositoryProfile,
     ImportRun,
     Project,
@@ -59,7 +60,7 @@ from app.services.ai import (
 from app.services.backup import BackupError, create_backup, validate_backup_archive
 from app.services.exporter import export_markdown
 from app.services.importer import import_odt
-from app.services.reports import generate_docx
+from app.services.reports import generate_docx, regenerate_docx
 
 settings = get_settings()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -87,6 +88,19 @@ def context(request: Request, **values: object) -> dict[str, object]:
 
 def redirect(path: str) -> RedirectResponse:
     return RedirectResponse(path, status_code=303)
+
+
+@app.exception_handler(HTTPException)
+async def user_facing_http_error(request: Request, exc: HTTPException):
+    """Keep the local browser application in its UI for expected request errors."""
+    if exc.status_code == 401:
+        request.session.clear()
+        return redirect("/login")
+    return templates.TemplateResponse(
+        "error.html",
+        context(request, error=str(exc.detail), status_code=exc.status_code),
+        status_code=exc.status_code,
+    )
 
 
 def current_user(request: Request, session: SessionDependency) -> User:
@@ -1071,6 +1085,7 @@ def create_report(
     csrf: Annotated[str, Form()],
     title: Annotated[str, Form()],
     record_ids: Annotated[list[str] | None, Form()] = None,
+    template_id: Annotated[str, Form()] = "",
     _: User = Depends(current_user),
 ):
     require_csrf(request, csrf)
@@ -1085,7 +1100,14 @@ def create_report(
             ),
             status_code=400,
         )
-    report = generate_docx(session, title.strip() or "CareerForge report", records)
+    template = session.get(ReportTemplate, template_id) if template_id else None
+    report = generate_docx(
+        session,
+        title.strip() or "CareerForge report",
+        records,
+        template_id=template.id if template else "",
+        template_content=template.content if template else "",
+    )
     return redirect(f"/reports/{report.id}/download")
 
 
@@ -1137,10 +1159,10 @@ async def reorder_report_items(
         raise HTTPException(status_code=400, detail="Report item selection is invalid.")
     for position, (item_id, _) in enumerate(requested, start=1):
         item_map[item_id].position = position
-    session.add(
-        AuditEvent(event_type="report.items_reordered", metadata_json={"report_id": report.id})
-    )
-    session.commit()
+    ordered_items = [item_map[item_id] for item_id, _ in requested]
+    session.add(AuditEvent(event_type="report.items_reordered", metadata_json={"report_id": report.id}))
+    session.flush()
+    regenerate_docx(session, report, ordered_items)
     return redirect(f"/reports/{report.id}")
 
 
@@ -1164,6 +1186,17 @@ def exports_page(request: Request, session: SessionDependency, _: User = Depends
         session.scalars(select(GitRepositoryProfile).order_by(GitRepositoryProfile.name))
     )
     return templates.TemplateResponse("exports.html", context(request, profiles=profiles))
+
+
+def latest_export_files(session: Session, profile_id: str) -> list[str]:
+    run = session.scalar(
+        select(ExportRun)
+        .where(ExportRun.profile_id == profile_id, ExportRun.status == "completed")
+        .order_by(ExportRun.created_at.desc())
+    )
+    manifest = run.manifest if run and isinstance(run.manifest, dict) else {}
+    files = manifest.get("files", [])
+    return [str(filename) for filename in files if isinstance(filename, str)]
 
 
 @app.post("/exports/profiles")
@@ -1243,6 +1276,7 @@ def export_preview(
             request,
             profiles=list(session.scalars(select(GitRepositoryProfile))),
             active_profile=profile,
+            latest_export_files=latest_export_files(session, profile.id),
             manifest=manifest,
             repo_status=repo_status,
             repo_diff=repo_diff,
@@ -1288,7 +1322,10 @@ def apply_export(
     if not profile:
         raise HTTPException(status_code=404, detail="Export profile not found.")
     manifest = export_markdown(
-        session, Path(profile.repository_path) / profile.export_subdirectory, dry_run=False
+        session,
+        Path(profile.repository_path) / profile.export_subdirectory,
+        dry_run=False,
+        profile_id=profile.id,
     )
     files_value = manifest.get("files")
     file_count = len(files_value) if isinstance(files_value, list) else 0
@@ -1305,10 +1342,83 @@ def apply_export(
             request,
             profiles=list(session.scalars(select(GitRepositoryProfile))),
             active_profile=profile,
+            latest_export_files=latest_export_files(session, profile.id),
             manifest=manifest,
             message="Markdown files were written. Review the Git preview before staging or committing.",
         ),
     )
+
+
+@app.post("/exports/{profile_id}/commit")
+def commit_export(
+    profile_id: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    confirmation: Annotated[str, Form()],
+    files: Annotated[list[str] | None, Form()] = None,
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    if confirmation != "COMMIT":
+        raise HTTPException(status_code=400, detail="Type COMMIT to create a local Git commit.")
+    profile = session.get(GitRepositoryProfile, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Git profile not found.")
+    allowed = set(latest_export_files(session, profile.id))
+    selected = files or []
+    if not selected or not set(selected).issubset(allowed):
+        raise HTTPException(status_code=400, detail="Select one or more files from the latest export.")
+    repo_files = [str(Path(profile.export_subdirectory) / filename) for filename in selected]
+    try:
+        commit_id = git_ops.commit(
+            Path(profile.repository_path),
+            repo_files,
+            f"Export CareerForge accomplishments ({len(repo_files)} files)",
+            confirmed=True,
+        )
+    except git_ops.GitOperationError as exc:
+        raise HTTPException(status_code=400, detail=f"Git commit failed: {exc}") from exc
+    session.add(
+        AuditEvent(
+            event_type="git_export.committed",
+            metadata_json={"profile_id": profile.id, "commit": commit_id, "count": len(repo_files)},
+        )
+    )
+    session.commit()
+    return redirect(f"/exports/{profile.id}/preview")
+
+
+@app.post("/exports/{profile_id}/push")
+def push_export(
+    profile_id: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    confirmation: Annotated[str, Form()],
+    remote: Annotated[str, Form()] = "origin",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    if confirmation != "PUSH":
+        raise HTTPException(status_code=400, detail="Type PUSH to send the clean branch to its remote.")
+    profile = session.get(GitRepositoryProfile, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Git profile not found.")
+    if not remote.strip():
+        raise HTTPException(status_code=400, detail="Provide a configured Git remote name.")
+    try:
+        git_ops.push(Path(profile.repository_path), remote.strip(), profile.branch, confirmed=True)
+    except git_ops.GitOperationError as exc:
+        raise HTTPException(status_code=400, detail=f"Git push failed: {exc}") from exc
+    session.add(
+        AuditEvent(
+            event_type="git_export.pushed",
+            metadata_json={"profile_id": profile.id, "remote": remote.strip(), "branch": profile.branch},
+        )
+    )
+    session.commit()
+    return redirect(f"/exports/{profile.id}/preview")
 
 
 @app.get("/audit")

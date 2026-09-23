@@ -35,7 +35,9 @@ def markdown_for(record: Accomplishment) -> str:
     return f"---\n{front_matter}\n---\n\n# {record.title}\n\n## Action\n\n{record.action}\n\n## Metric\n\n{record.metric}\n\n## Impact\n\n{record.impact}\n\n## Supporting details\n\n{record.supporting_narrative}\n"
 
 
-def export_markdown(session: Session, destination: Path, dry_run: bool = True) -> dict[str, object]:
+def export_markdown(
+    session: Session, destination: Path, dry_run: bool = True, profile_id: str | None = None
+) -> dict[str, object]:
     records = list(
         session.scalars(
             select(Accomplishment).where(
@@ -54,7 +56,11 @@ def export_markdown(session: Session, destination: Path, dry_run: bool = True) -
             destination.mkdir(parents=True, exist_ok=True)
             (destination / filename).write_text(markdown_for(record), encoding="utf-8")
     manifest = {"generated_at": datetime.now(UTC).isoformat(), "dry_run": dry_run, "files": files}
-    run = ExportRun(status="dry_run" if dry_run else "completed", manifest=manifest)
+    run = ExportRun(
+        profile_id=profile_id,
+        status="dry_run" if dry_run else "completed",
+        manifest=manifest,
+    )
     session.add(run)
     session.add(
         AuditEvent(

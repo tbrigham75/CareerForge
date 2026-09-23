@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel"><h1>We couldn't complete that request</h1><p>{{ error }}</p><p class="muted">Nothing was changed unless the previous page confirmed it.</p><p><a class="button secondary" href="javascript:history.back()">Go back</a> <a class="button" href="/dashboard">Dashboard</a></p></section>
+{% endblock %}

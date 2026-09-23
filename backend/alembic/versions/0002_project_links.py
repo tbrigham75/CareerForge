@@ -17,6 +17,12 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # The initial migration historically used Base.metadata.create_all(), which
+    # includes this association table when run against the current metadata.
+    # Preserve a safe upgrade path for both those databases and older databases
+    # that genuinely still need the table.
+    if sa.inspect(op.get_bind()).has_table("project_accomplishments"):
+        return
     op.create_table(
         "project_accomplishments",
         sa.Column("project_id", sa.String(length=36), nullable=False),

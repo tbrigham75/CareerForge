@@ -17,6 +17,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    columns = {
+        column["name"] for column in sa.inspect(op.get_bind()).get_columns("ai_providers")
+    }
+    if "retry_attempts" in columns:
+        return
     with op.batch_alter_table("ai_providers") as batch:
         batch.add_column(
             sa.Column("retry_attempts", sa.Integer(), nullable=False, server_default="1")

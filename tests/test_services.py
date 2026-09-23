@@ -4,8 +4,11 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
+from docx import Document
+from sqlalchemy import select
 
 from app.db import SessionLocal
+from app.models import ReportItem
 from app.schemas import AccomplishmentInput
 from app.security import decrypt_secret, encrypt_secret
 from app.services.accomplishments import archive, create, update
@@ -13,7 +16,7 @@ from app.services.ai import ProviderSafetyError, classify_and_validate_url
 from app.services.backup import BackupError, create_backup, validate_backup_archive
 from app.services.exporter import export_markdown
 from app.services.git_ops import GitOperationError, commit, push
-from app.services.reports import generate_docx
+from app.services.reports import generate_docx, regenerate_docx
 
 
 def test_secret_round_trip_and_endpoint_policy():
@@ -64,6 +67,50 @@ def test_revisions_archive_report_and_export(tmp_path: Path):
         manifest = export_markdown(session, tmp_path, dry_run=False)
         assert len(manifest["files"]) == 1
         assert (tmp_path / manifest["files"][0]).read_text(encoding="utf-8").startswith("---")
+
+
+def test_report_template_content_and_reorder_rebuild_download():
+    with SessionLocal() as session:
+        first = create(
+            session,
+            AccomplishmentInput(
+                title="First report item",
+                raw_note="First report item",
+                action="First action",
+                metric="First metric",
+                impact="First impact",
+                sensitivity="internal",
+            ),
+        )
+        second = create(
+            session,
+            AccomplishmentInput(
+                title="Second report item",
+                raw_note="Second report item",
+                action="Second action",
+                metric="Second metric",
+                impact="Second impact",
+                sensitivity="internal",
+            ),
+        )
+        report = generate_docx(
+            session,
+            "Template report",
+            [first, second],
+            template_content="This report is for the verification audience.",
+        )
+        initial_text = "\n".join(paragraph.text for paragraph in Document(report.output_path).paragraphs)
+        assert "This report is for the verification audience." in initial_text
+        items = list(
+            session.scalars(
+                select(ReportItem).where(ReportItem.report_id == report.id).order_by(ReportItem.position)
+            )
+        )
+        items[0].position, items[1].position = 2, 1
+        session.flush()
+        regenerate_docx(session, report, [items[1], items[0]])
+        rebuilt_text = "\n".join(paragraph.text for paragraph in Document(report.output_path).paragraphs)
+        assert rebuilt_text.index("Second report item") < rebuilt_text.index("First report item")
 
 
 def test_backup_creation_and_unsafe_member_rejection(tmp_path: Path):

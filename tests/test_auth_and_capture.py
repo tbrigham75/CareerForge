@@ -57,6 +57,9 @@ def test_first_run_login_invalid_login_and_logout(client):
         client.post("/logout", data={"csrf": token(client)}, follow_redirects=False).status_code
         == 303
     )
+    signed_out = client.get("/dashboard", follow_redirects=False)
+    assert signed_out.status_code == 303
+    assert signed_out.headers["location"] == "/login"
 
 
 def test_save_raw_note_and_search(logged_in):

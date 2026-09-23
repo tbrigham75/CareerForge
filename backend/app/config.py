@@ -4,6 +4,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,14 @@ class Settings(BaseSettings):
     max_ai_response_bytes: int = 1_048_576
     max_attachment_bytes: int = 25 * 1024 * 1024
     encryption_key: str = ""
+
+    @field_validator("data_dir", mode="before")
+    @classmethod
+    def empty_data_dir_uses_windows_default(cls, value: object) -> object:
+        """Treat an empty value in a copied .env file as unset, not as the working directory."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return _default_data_dir()
+        return value
 
     @property
     def database_path(self) -> Path:

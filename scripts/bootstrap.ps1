@@ -15,9 +15,10 @@ Invoke-Checked { & .\.venv\Scripts\python.exe -m pip install --index-url https:/
 Invoke-Checked { & .\.venv\Scripts\python.exe -m pip install --index-url https://pypi.org/simple -r requirements-dev.txt }
 if (-not (Test-Path '.env')) { Copy-Item '.env.example' '.env' }
 $environment = Get-Content '.env' -Raw
-if ($environment -notmatch '(?m)^CAREERFORGE_ENCRYPTION_KEY=.+$') {
+if ($environment -notmatch '(?m)^CAREERFORGE_ENCRYPTION_KEY=[^\s\r\n]+$') {
   $key = & .\.venv\Scripts\python.exe -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-  Add-Content '.env' "`nCAREERFORGE_ENCRYPTION_KEY=$key"
+  $withoutKeys = [regex]::Replace($environment, '(?m)^CAREERFORGE_ENCRYPTION_KEY=.*\r?\n?', '')
+  Set-Content '.env' ($withoutKeys.TrimEnd() + "`nCAREERFORGE_ENCRYPTION_KEY=$key`n") -NoNewline
 }
 $dataDir = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'CareerForge' } else { Join-Path $HOME '.careerforge' }
 New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
