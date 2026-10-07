@@ -5,7 +5,7 @@ import re
 from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models import Project
+from app.models import Accomplishment, Project
 
 
 def token(client):
@@ -76,6 +76,27 @@ def test_save_raw_note_and_search(logged_in):
     assert response.status_code == 303
     archive = logged_in.get("/accomplishments?q=PowerShell")
     assert "PowerShell script" in archive.text
+
+
+def test_capture_rejects_start_date_after_completion(logged_in):
+    response = logged_in.post(
+        "/capture",
+        data={
+            "csrf": token(logged_in),
+            "title": "Invalid date order",
+            "raw_note": "This record must not be saved.",
+            "date_started": "2026-10-08",
+            "date_completed": "2026-10-07",
+            "sensitivity": "private_personal",
+            "action_choice": "raw",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+    assert "Start date must be on or before completion date." in response.text
+    with SessionLocal() as session:
+        assert session.scalar(select(Accomplishment).where(Accomplishment.title == "Invalid date order")) is None
 
 
 def test_project_link_and_evidence(logged_in):

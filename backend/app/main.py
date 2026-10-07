@@ -138,6 +138,11 @@ def form_to_accomplishment(
     status: str,
     approval_status: str,
 ) -> AccomplishmentInput:
+    started = parse_date(date_started)
+    completed = parse_date(date_completed)
+    if started and completed and started > completed:
+        raise ValueError("Start date must be on or before completion date.")
+
     return AccomplishmentInput(
         title=title,
         raw_note=raw_note,
@@ -145,8 +150,8 @@ def form_to_accomplishment(
         metric=metric,
         impact=impact,
         supporting_narrative=supporting_narrative,
-        date_started=parse_date(date_started),
-        date_completed=parse_date(date_completed),
+        date_started=started,
+        date_completed=completed,
         systems=parse_list(systems),
         technologies=parse_list(technologies),
         tags=parse_list(tags),
@@ -323,24 +328,33 @@ def capture(
         )
     status = "raw_note" if action_choice == "raw" else "completed"
     approval = "draft" if action_choice == "raw" else "approved"
-    data = form_to_accomplishment(
-        title,
-        raw_note,
-        action,
-        metric,
-        impact,
-        supporting_narrative,
-        date_started,
-        date_completed,
-        systems,
-        technologies,
-        tags,
-        categories,
-        sensitivity,
-        github_export,
-        status,
-        approval,
-    )
+    try:
+        data = form_to_accomplishment(
+            title,
+            raw_note,
+            action,
+            metric,
+            impact,
+            supporting_narrative,
+            date_started,
+            date_completed,
+            systems,
+            technologies,
+            tags,
+            categories,
+            sensitivity,
+            github_export,
+            status,
+            approval,
+        )
+    except ValueError as exc:
+        providers = list(session.scalars(select(AIProvider).where(AIProvider.enabled.is_(True))))
+        projects = list(session.scalars(select(Project).order_by(Project.name)))
+        return templates.TemplateResponse(
+            "capture.html",
+            context(request, providers=providers, projects=projects, record=None, error=str(exc)),
+            status_code=400,
+        )
     record = accomplishments.create(session, data)
     if project_id:
         project = session.get(Project, project_id)
@@ -473,24 +487,31 @@ def edit_accomplishment(
 ):
     require_csrf(request, csrf)
     record = get_record(session, record_id)
-    data = form_to_accomplishment(
-        title,
-        raw_note,
-        action,
-        metric,
-        impact,
-        supporting_narrative,
-        date_started,
-        date_completed,
-        systems,
-        technologies,
-        tags,
-        categories,
-        sensitivity,
-        github_export,
-        status,
-        approval_status,
-    )
+    try:
+        data = form_to_accomplishment(
+            title,
+            raw_note,
+            action,
+            metric,
+            impact,
+            supporting_narrative,
+            date_started,
+            date_completed,
+            systems,
+            technologies,
+            tags,
+            categories,
+            sensitivity,
+            github_export,
+            status,
+            approval_status,
+        )
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            "edit_accomplishment.html",
+            context(request, record=record, error=str(exc)),
+            status_code=400,
+        )
     accomplishments.update(session, record, data, "manually_edited")
     return redirect(f"/accomplishments/{record.id}")
 
