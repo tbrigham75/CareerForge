@@ -313,6 +313,39 @@ def capture_page(request: Request, session: SessionDependency, _: User = Depends
     )
 
 
+@app.post("/capture/assist")
+async def assist_capture(
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    raw_note: Annotated[str, Form()] = "",
+    provider_id: Annotated[str, Form()] = "",
+    remote_confirmation: Annotated[bool, Form()] = False,
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    provider = session.get(AIProvider, provider_id) if provider_id else None
+    if not provider or not provider.enabled:
+        return JSONResponse({"error": "Set up an enabled AI provider first.", "setup_url": "/providers"}, status_code=400)
+    if not provider.default_model.strip():
+        return JSONResponse({"error": "Set a default model for this provider on AI Providers.", "setup_url": "/providers"}, status_code=400)
+    if not raw_note.strip() or len(raw_note) > 20_000:
+        return JSONResponse({"error": "Enter a note between 1 and 20,000 characters."}, status_code=400)
+    try:
+        classification = classify_and_validate_url(provider.base_url)
+        if classification == "remote" and not remote_confirmation:
+            return {"confirmation_required": True, "provider": provider.display_name, "raw_note": raw_note}
+        draft = await generate_draft(provider, raw_note, {"remote_confirmation": remote_confirmation})
+    except Exception:
+        return JSONResponse({"error": "AI assistance failed. Check the provider connection and default model, then retry. Your form has not been changed."}, status_code=502)
+    values = draft.model_dump()
+    for field, question in {"action": "What did you do?", "metric": "What measurable result or scope can you confirm?", "impact": "What outcome can you confirm?"}.items():
+        if not values[field].strip():
+            values[field] = "[More information needed]"
+            values["questions"].append(question)
+    return {"draft": values}
+
+
 @app.post("/capture")
 def capture(
     request: Request,

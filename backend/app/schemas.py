@@ -52,6 +52,7 @@ class AIDraftResponse(BaseModel):
     suggested_categories: list[str] = Field(default_factory=list)
     suggested_tags: list[str] = Field(default_factory=list)
     suggested_technologies: list[str] = Field(default_factory=list)
+    suggested_systems: list[str] = Field(default_factory=list)
     identified_facts: list[str] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
     placeholders: list[str] = Field(default_factory=list)

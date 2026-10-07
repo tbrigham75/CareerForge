@@ -67,7 +67,9 @@ try:
         page.get_by_role("button", name="Create administrator").click()
         for login_theme in ["slate", "ocean", "emerald", "violet", "amber", "rose"]:
             for login_mode in ["light", "dark"]:
-                page.evaluate("args => window.careerforgeTheme.set(...args)", [login_theme, login_mode])
+                page.evaluate(
+                    "args => window.careerforgeTheme.set(...args)", [login_theme, login_mode]
+                )
                 page.get_by_label("Username", exact=True).fill("ui-review")
                 page.get_by_label("Password", exact=True).fill("isolated review password")
                 colors = page.locator('input[name="username"]').evaluate("""el => {
@@ -76,7 +78,9 @@ try:
                   const a=lum(s.color), b=lum(s.backgroundColor); return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
                 }""")
                 assert colors >= 4.5, (login_theme, login_mode, colors)
-                page.screenshot(path=str(ARTIFACTS / f'login-{login_theme}-{login_mode}.png'), full_page=True)
+                page.screenshot(
+                    path=str(ARTIFACTS / f"login-{login_theme}-{login_mode}.png"), full_page=True
+                )
         page.get_by_label("Username", exact=True).fill("ui-review")
         page.get_by_label("Password", exact=True).fill("isolated review password")
         page.get_by_role("button", name="Sign in", exact=True).click()
@@ -128,6 +132,49 @@ try:
         )
         page.goto(base + "/dashboard")
         assert page.locator(".empty-state").is_visible()
+        page.goto(base + "/capture")
+        expect(
+            page.get_by_role("link", name="Set up AI Provider (opens a new tab)")
+        ).to_be_visible()
+        page.goto(base + "/providers")
+        page.get_by_label("Display name", exact=True).fill("UI test provider")
+        page.get_by_label("Base URL", exact=True).fill("https://example.com")
+        page.get_by_label("Default model", exact=True).fill("test-model")
+        page.get_by_role("button", name="Save provider", exact=True).click()
+        page.goto(base + "/capture")
+        page.get_by_label("What did you do?").fill("Patched four Linux servers.")
+        page.get_by_label("Title", exact=True).fill("My own title")
+        page.route(
+            "**/capture/assist",
+            lambda route: route.fulfill(
+                json={
+                    "draft": {
+                        "title": "Patched servers",
+                        "action": "Patched four Linux servers.",
+                        "metric": "Four servers",
+                        "impact": "[Confirm outcome]",
+                        "supporting_narrative": "",
+                        "suggested_systems": ["Linux"],
+                        "suggested_technologies": [],
+                        "suggested_tags": ["patching"],
+                        "suggested_categories": [],
+                        "questions": ["What was the verified outcome?"],
+                    }
+                }
+            ),
+        )
+        page.get_by_role("button", name="Help me fill this out", exact=True).click()
+        expect(page.get_by_label("Action", exact=True)).to_have_value("Patched four Linux servers.")
+        expect(page.get_by_label("Metric", exact=True)).to_have_value("Four servers")
+        expect(page.get_by_label("Impact", exact=True)).to_have_value("[Confirm outcome]")
+        expect(page.get_by_label("Title", exact=True)).to_have_value("My own title")
+        expect(page.get_by_label("What did you do?")).to_have_value("Patched four Linux servers.")
+        page.get_by_role("button", name="Replace Title with suggestion", exact=True).click()
+        expect(page.get_by_label("Title", exact=True)).to_have_value("Patched servers")
+        page.unroute("**/capture/assist")
+        results["interactions"].append(
+            "AI setup guidance and simulated autofill: title preservation, explicit replacement, Action/Metric/Impact and unchanged raw note"
+        )
         page.goto(base + "/capture")
         page.get_by_label("What did you do?").fill(
             "Automated weekly service checks, saving two hours per week."
@@ -241,11 +288,13 @@ try:
         page.get_by_role("button", name="Menu", exact=True).click()
         assert page.get_by_role("link", name="Overview", exact=True).is_visible()
         page.set_viewport_size({"width": 1366, "height": 768})
-        page.goto(base + '/dashboard')
-        expect(page.get_by_role('link', name='Overview', exact=True)).to_be_visible()
-        expect(page.get_by_role('button', name='Appearance settings', exact=True)).to_be_in_viewport()
-        expect(page.get_by_role('button', name='Log out', exact=True)).to_be_in_viewport()
-        page.screenshot(path=str(ARTIFACTS / 'navigation-laptop.png'), full_page=True)
+        page.goto(base + "/dashboard")
+        expect(page.get_by_role("link", name="Overview", exact=True)).to_be_visible()
+        expect(
+            page.get_by_role("button", name="Appearance settings", exact=True)
+        ).to_be_in_viewport()
+        expect(page.get_by_role("button", name="Log out", exact=True)).to_be_in_viewport()
+        page.screenshot(path=str(ARTIFACTS / "navigation-laptop.png"), full_page=True)
         page.goto(base + "/dashboard")
         page.keyboard.press("Tab")
         assert page.locator(":focus").text_content() == "Skip to content"

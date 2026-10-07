@@ -86,10 +86,13 @@ def _headers(provider: AIProvider) -> dict[str, str]:
 def _prompt(raw_note: str, metadata: dict[str, object]) -> str:
     return f"""You are CareerForge's factual writing assistant. Return ONLY one JSON object with keys:
 title, action, metric, impact, supporting_narrative, suggested_categories, suggested_tags,
-suggested_technologies, identified_facts, assumptions, placeholders, questions, quality_checks.
+suggested_technologies, suggested_systems, identified_facts, assumptions, placeholders, questions, quality_checks.
 Use only facts supplied below. Never invent counts, dates, systems, time savings, downtime,
 security or business outcomes. For missing facts use visible bracketed placeholders and concise questions.
 Every result is an AI Draft — Review Required.
+Always provide action, metric and impact. When a metric or outcome is absent, put a
+bracketed missing-information placeholder in that field and ask a follow-up question.
+Suggested systems and technologies must be explicitly supported by the note.
 
 Raw note:
 {raw_note}
