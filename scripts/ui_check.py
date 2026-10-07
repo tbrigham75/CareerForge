@@ -69,6 +69,52 @@ try:
         page.get_by_label("Password", exact=True).fill("isolated review password")
         page.get_by_role("button", name="Sign in", exact=True).click()
         page.wait_for_url("**/dashboard")
+        # Browse only selects paths; it must never submit either parent form.
+        fixture_repo = Path(data_dir) / "browse-repository"
+        fixture_repo.mkdir()
+        subprocess.run(["git", "init", str(fixture_repo)], check=True, capture_output=True)
+        (fixture_repo / "exports").mkdir()
+        fixture_source = fixture_repo / "Example.ODT"
+        fixture_source.write_bytes(b"read-only picker fixture")
+        page.goto(base + "/exports")
+        page.locator('[data-browse="subdirectory"]').click()
+        expect(page.locator("dialog [data-status]")).to_contain_text("Choose or enter a repository")
+        page.keyboard.press("Escape")
+        page.get_by_label("Repository path", exact=True).fill(str(fixture_repo))
+        page.locator('[data-browse="repository"]').click()
+        expect(page.locator("dialog [data-select]")).to_be_enabled()
+        page.locator("dialog [data-select]").click()
+        expect(page.locator("dialog")).not_to_be_visible()
+        expect(page.get_by_label("Repository path", exact=True)).to_have_value(
+            str(fixture_repo.resolve())
+        )
+        page.locator('[data-browse="subdirectory"]').click()
+        page.get_by_role("button", name="Folder · exports", exact=True).click()
+        expect(page.locator("#browser-location")).to_have_value(str(fixture_repo / "exports"))
+        page.locator("dialog [data-select]").click()
+        expect(page.get_by_label("Export subdirectory", exact=True)).to_have_value("exports")
+        assert page.url == base + "/exports"
+        page.goto(base + "/imports")
+        page.get_by_label("Local ODT source path").fill(str(fixture_repo))
+        page.get_by_role("button", name="Browse files", exact=True).click()
+        expect(page.locator("dialog [data-select]")).not_to_be_visible()
+        page.get_by_role("button", name="ODT file · Example.ODT", exact=True).click()
+        expect(page.get_by_label("Local ODT source path")).to_have_value(str(fixture_source))
+        assert page.url == base + "/imports"
+        page.get_by_role("button", name="Browse files", exact=True).click()
+        expect(page.locator("dialog [data-status]")).to_contain_text("items shown")
+        page.set_viewport_size({"width": 390, "height": 844})
+        no_overflow(page)
+        page.screenshot(path=str(ARTIFACTS / "browse-mobile.png"), full_page=True)
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("button", name="Browse files", exact=True)).to_be_focused()
+        expect(page.get_by_label("Local ODT source path")).to_have_value(str(fixture_source))
+        assert fixture_source.read_bytes() == b"read-only picker fixture"
+        page.set_viewport_size({"width": 1440, "height": 1000})
+        results["interactions"].append(
+            "Repository picker, relative export folder, ODT filtering/selection, cancellation and focus restoration; no automatic submissions"
+        )
+        page.goto(base + "/dashboard")
         assert page.locator(".empty-state").is_visible()
         page.goto(base + "/capture")
         page.get_by_label("What did you do?").fill(

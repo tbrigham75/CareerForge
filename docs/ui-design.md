@@ -28,7 +28,13 @@ The blocking theme script precedes the stylesheet and body to apply stored appea
 
 This is not a formal WCAG certification or a complete assistive-technology/cross-browser audit. Native confirmation dialogs remain browser/OS controlled. Actual remote AI and Git integrations were not exercised by this visual audit.
 
-## Reproduce
+## Local path selection
+
+Exports provides Browse folders for the Git repository root and its export subdirectory; Imports provides Browse files filtered to ODT documents. The shared themed dialog lists drives and folders, supports manual navigation, pagination, cancellation and keyboard focus restoration. Subdirectory choices are relative to and bounded by the selected repository. Manual entry remains available for new export folder names. Selection never submits the parent form or modifies the selected source. The authenticated, CSRF-protected `/files/browse` endpoint lists paths on the computer running CareerForge; network/device paths are excluded. Existing import/export confirmations remain required.
+
+Verification added: three backend tests covering authentication, CSRF, ODT filtering, unchanged source contents, repository validation, boundary enforcement and invalid locations. The browser audit now also exercises all three pickers and mobile cancellation/focus restoration.
+
+## Reproduce checks
 
 Install optional `playwright==1.63.0` into the development virtual environment; the browser check uses installed Microsoft Edge. Run `.venv/Scripts/python.exe scripts/ui_check.py`. It migrates a disposable database under ignored `temp/ui-review/`, starts its own loopback server and stops it afterward. Screenshots, a JSON results file and server logs remain there for inspection. User data and source documents are untouched.
 

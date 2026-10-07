@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import secrets
+import subprocess
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -11,7 +12,7 @@ from time import perf_counter
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -59,6 +60,7 @@ from app.services.ai import (
 )
 from app.services.backup import BackupError, create_backup, validate_backup_archive
 from app.services.exporter import export_markdown
+from app.services.file_browser import browse_paths
 from app.services.importer import import_odt
 from app.services.reports import generate_docx, regenerate_docx
 
@@ -114,6 +116,30 @@ def current_user(request: Request, session: SessionDependency) -> User:
 
 def parse_list(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+@app.post("/files/browse")
+def browse_local_files(
+    request: Request,
+    csrf: Annotated[str, Form()],
+    kind: Annotated[str, Form()],
+    path: Annotated[str, Form()] = "",
+    repository: Annotated[str, Form()] = "",
+    select_path: Annotated[bool, Form()] = False,
+    offset: Annotated[int, Form()] = 0,
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    try:
+        if kind == "subdirectory" and not repository.strip():
+            raise ValueError("Choose a repository folder first.")
+        return browse_paths(kind, path, repository, select_path, offset)
+    except git_ops.GitOperationError:
+        return JSONResponse({"error": "This folder is not a usable Git repository."}, status_code=400)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        return JSONResponse({"error": "This location is unavailable or you do not have permission to browse it."}, status_code=400)
 
 
 def parse_date(value: str) -> date | None:

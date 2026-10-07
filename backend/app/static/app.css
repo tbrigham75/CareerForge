@@ -134,6 +134,19 @@ li { padding: 5px 0; overflow-wrap: anywhere; }
 .empty-state { text-align: center; padding: 48px 24px; border: 1px dashed var(--field-border); border-radius: var(--radius); }
 .auth-card { max-width: 480px; margin: 6vh auto; }
 .auth-card h1 { font-size: 29px; }
+.path-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+.path-control input { flex: 1 1 180px; min-width: 0; margin: 0; }
+.path-control button { flex: 0 0 auto; margin: 0; }
+.field-help { font-size: 12px; }
+.file-browser { width: min(700px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--ink); box-shadow: var(--shadow-raised); }
+.file-browser::backdrop { background: #0009; }
+.file-browser [hidden] { display: none !important; }
+.file-browser .page-heading { margin-bottom: 12px; }
+.file-browser label { margin: 12px 0 6px; }
+.browser-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.browser-entries { max-height: 35vh; overflow-y: auto; margin: 12px 0; }
+.browser-entry { display: block; width: calc(100% - 8px); text-align: left; overflow-wrap: anywhere; }
+.browser-entries:empty { display: none; }
 @media (max-width: 900px) {
   .sidebar { position: static; width: auto; padding: 16px 20px; border-right: 0; border-bottom: 1px solid var(--line); }
   .workspace .app-body { margin-left: 0; }
