@@ -2,21 +2,21 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}CareerForge{% endblock %}</title>
-<script src="/static/theme.js"></script><link rel="stylesheet" href="/static/app.css"><script src="/static/app.js" defer></script>
+<script src="/static/theme.js?v=20261007b"></script><link rel="stylesheet" href="/static/app.css?v=20261007b"><script src="/static/app.js?v=20261007b" defer></script>
 </head><body class="{{ 'workspace' if user_id else 'guest' }}">
 <a class="skip-link" href="#main">Skip to content</a>
 {% if user_id %}<aside class="sidebar">
 <a class="brand" href="/dashboard"><span class="brand-mark" aria-hidden="true">CF</span><span>CareerForge<small>Your work, remembered.</small></span></a>
-<details class="navigation" open><summary>Workspace navigation</summary><nav aria-label="Main navigation">
+<button type="button" class="secondary nav-toggle" aria-expanded="false" aria-controls="workspace-nav">Menu</button><nav id="workspace-nav" class="navigation" aria-label="Main navigation">
 {% set groups = [('Workspace', [('/dashboard', 'Overview'), ('/capture', 'I Did This'), ('/accomplishments', 'Accomplishments'), ('/projects', 'Projects'), ('/taxonomy', 'Taxonomy')]), ('Share your progress', [('/reports', 'Reports'), ('/exports', 'Exports / Git Sync')]), ('Manage', [('/imports', 'Imports'), ('/operations', 'Operations'), ('/providers', 'AI Providers'), ('/audit', 'Audit Log')])] %}
 {% for heading, links in groups %}<p class="nav-heading">{{ heading }}</p>{% for url, label in links %}<a href="{{ url }}" {% if request.url.path == url or request.url.path.startswith(url + '/') %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}{% endfor %}
-</nav></details>
-<div class="sidebar-footer"><span class="local-label">Local workspace</span><form class="inline" action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="secondary">Log out</button></form></div>
+</nav>
+<div class="sidebar-footer"><button type="button" class="secondary appearance-trigger">Appearance settings</button><form class="inline" action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="secondary">Log out</button></form></div>
 </aside>{% endif %}
-<div class="app-body"><header class="topbar"><span class="topbar-label">{{ 'Build a record of your impact' if user_id else 'CareerForge · Your personal career archive' }}</span>
-<details class="preferences"><summary>Theme &amp; appearance</summary><div class="preferences-panel"><h2>Make it yours</h2><p class="muted">Saved in this browser.</p>
+<div class="app-body">
+<main id="main" tabindex="-1">{% if error %}<p class="notice error" role="alert"><strong>Unable to complete request.</strong> {{ error }}</p>{% endif %}{% if message %}<p class="notice success" role="status">{{ message }}</p>{% endif %}{% block content %}{% endblock %}</main>
+{% if not user_id %}<div class="guest-preferences"><button type="button" class="secondary appearance-trigger">Appearance settings</button></div>{% endif %}
+<footer class="page-footer">CareerForge <span>Capture the work. Keep the evidence. Tell your story.</span></footer></div><dialog class="preferences" aria-labelledby="appearance-title"><div class="preferences-panel"><div class="page-heading"><h2 id="appearance-title">Appearance</h2><button type="button" class="secondary" data-close-appearance>Done</button></div><p class="muted">Saved in this browser.</p>
 <label for="theme-choice">Color theme</label><select id="theme-choice"><option value="slate">Slate</option><option value="ocean">Ocean</option><option value="emerald">Emerald</option><option value="violet">Violet</option><option value="amber">Amber</option><option value="rose">Rose</option></select>
 <label for="appearance-choice">Appearance</label><select id="appearance-choice"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select><p id="theme-feedback" class="muted" role="status"></p>
-</div></details></header>
-<main id="main" tabindex="-1">{% if error %}<p class="notice error" role="alert"><strong>Unable to complete request.</strong> {{ error }}</p>{% endif %}{% if message %}<p class="notice success" role="status">{{ message }}</p>{% endif %}{% block content %}{% endblock %}</main>
-<footer class="page-footer">CareerForge <span>Capture the work. Keep the evidence. Tell your story.</span></footer></div></body></html>
+</div></dialog></body></html>

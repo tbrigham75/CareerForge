@@ -12,7 +12,7 @@ The existing FastAPI/Jinja architecture and form contracts are retained. No prod
 
 ## Preferences
 
-Open **Theme & appearance** at the top of any page. Choose Slate, Ocean, Emerald, Violet, Amber or Rose, then select Light, Dark or System independently. Preferences are local to the browser, stored under `careerforge-style`. System follows the OS immediately. Each palette changes backgrounds, panels, navigation, borders and accents. Semantic success/error/warning colors remain consistent across palettes.
+Open **Appearance settings** in the sidebar utility area, or below the login form when signed out. The settings dialog offers Slate, Ocean, Emerald, Violet, Amber and Rose, with Light, Dark or System independently. Preferences are local to the browser, stored under `careerforge-style`. System follows the OS immediately. Each palette changes backgrounds, panels, navigation, borders and accents. Semantic success/error/warning colors remain consistent across palettes.
 
 The blocking theme script precedes the stylesheet and body to apply stored appearance before painting. Invalid or unavailable storage falls back to Slate/System; unavailable persistence is disclosed when changing preferences.
 
@@ -25,6 +25,7 @@ The blocking theme script precedes the stylesheet and body to apply stored appea
 - Measured text token pairs meet 4.5:1 contrast; input boundary token pairs meet 3:1. Includes accent-on-tinted-surface and semantic feedback pairs.
 - Setup/login, empty dashboard, dated capture, project creation, report selection/download, date validation, reduced motion, live OS appearance, Escape dismissal, mobile menu and keyboard skip link: passed. No browser JavaScript errors.
 - Screenshot inspection: Slate light, Amber light, Rose dark and mobile capture.
+- Follow-up correction: login input contrast and screenshots now cover all 12 palettes. Explicit autofill colors and versioned assets avoid mixed styling; color changes no longer animate independently. Navigation uses a dedicated mobile Menu button and an independently scrolling link area, keeping Appearance settings and Log out reachable at laptop height. Browser assertions verify their visibility at 1366 × 768; login and laptop screenshots were reviewed.
 
 This is not a formal WCAG certification or a complete assistive-technology/cross-browser audit. Native confirmation dialogs remain browser/OS controlled. Actual remote AI and Git integrations were not exercised by this visual audit.
 

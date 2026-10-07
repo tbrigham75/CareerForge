@@ -11,16 +11,22 @@
   theme.addEventListener('change', updateTheme);
   appearance.addEventListener('change', updateTheme);
   const menu = document.querySelector('.navigation');
+  const toggle = document.querySelector('.nav-toggle');
   const mobile = matchMedia('(max-width: 900px)');
-  function resizeNavigation() { if (menu) menu.open = !mobile.matches; }
+  function resizeNavigation() {
+    if (!menu) return;
+    menu.hidden = mobile.matches;
+    toggle.setAttribute('aria-expanded', String(!menu.hidden));
+  }
+  toggle?.addEventListener('click', () => {
+    menu.hidden = !menu.hidden;
+    toggle.setAttribute('aria-expanded', String(!menu.hidden));
+  });
   mobile.addEventListener('change', resizeNavigation);
   resizeNavigation();
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') document.querySelectorAll('.preferences[open]').forEach(item => {
-      item.open = false;
-      item.querySelector('summary').focus();
-    });
-  });
+  const appearanceDialog = document.querySelector('.preferences');
+  document.querySelectorAll('.appearance-trigger').forEach(button => button.addEventListener('click', () => appearanceDialog.showModal()));
+  document.querySelector('[data-close-appearance]').addEventListener('click', () => appearanceDialog.close());
   const heading = document.querySelector('main h1');
   if (heading) document.title = `${heading.textContent.trim()} · CareerForge`;
   document.querySelectorAll('main table').forEach(table => {

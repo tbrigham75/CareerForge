@@ -65,6 +65,18 @@ try:
         page.get_by_label("Password (12+ characters)", exact=True).fill("isolated review password")
         page.get_by_label("Confirm password", exact=True).fill("isolated review password")
         page.get_by_role("button", name="Create administrator").click()
+        for login_theme in ["slate", "ocean", "emerald", "violet", "amber", "rose"]:
+            for login_mode in ["light", "dark"]:
+                page.evaluate("args => window.careerforgeTheme.set(...args)", [login_theme, login_mode])
+                page.get_by_label("Username", exact=True).fill("ui-review")
+                page.get_by_label("Password", exact=True).fill("isolated review password")
+                colors = page.locator('input[name="username"]').evaluate("""el => {
+                  const s = getComputedStyle(el);
+                  const lum = c => c.match(/[\\d.]+/g).slice(0,3).map(Number).map(v => {v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((a,v,i)=>a+v*[.2126,.7152,.0722][i],0);
+                  const a=lum(s.color), b=lum(s.backgroundColor); return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+                }""")
+                assert colors >= 4.5, (login_theme, login_mode, colors)
+                page.screenshot(path=str(ARTIFACTS / f'login-{login_theme}-{login_mode}.png'), full_page=True)
         page.get_by_label("Username", exact=True).fill("ui-review")
         page.get_by_label("Password", exact=True).fill("isolated review password")
         page.get_by_role("button", name="Sign in", exact=True).click()
@@ -84,7 +96,7 @@ try:
         page.locator('[data-browse="repository"]').click()
         expect(page.locator("dialog [data-select]")).to_be_enabled()
         page.locator("dialog [data-select]").click()
-        expect(page.locator("dialog")).not_to_be_visible()
+        expect(page.locator(".file-browser")).not_to_be_visible()
         expect(page.get_by_label("Repository path", exact=True)).to_have_value(
             str(fixture_repo.resolve())
         )
@@ -181,9 +193,9 @@ try:
         page.goto(base + "/dashboard")
         for theme in ["slate", "ocean", "emerald", "violet", "amber", "rose"]:
             for mode in ["light", "dark"]:
-                page.locator(".preferences").evaluate("e => e.open = true")
+                page.get_by_role("button", name="Appearance settings", exact=True).click()
                 page.get_by_label("Color theme").select_option(theme)
-                page.get_by_label("Appearance", exact=True).select_option(mode)
+                page.get_by_role("combobox", name="Appearance", exact=True).select_option(mode)
                 page.reload()
                 assert page.locator("html").get_attribute("data-theme") == theme
                 assert page.locator("html").get_attribute("data-mode") == mode
@@ -205,8 +217,8 @@ try:
                     assert page.goto(base + route).status == 200
                     no_overflow(page)
                 page.goto(base + "/dashboard")
-        page.locator(".preferences").evaluate("e => e.open = true")
-        page.get_by_label("Appearance", exact=True).select_option("system")
+        page.get_by_role("button", name="Appearance settings", exact=True).click()
+        page.get_by_role("combobox", name="Appearance", exact=True).select_option("system")
         for mode in ["light", "dark"]:
             page.emulate_media(color_scheme=mode)
             expect(page.locator("html")).to_have_attribute("data-mode", mode)
@@ -225,9 +237,15 @@ try:
         page.set_viewport_size({"width": 390, "height": 844})
         page.goto(base + "/capture")
         page.screenshot(path=str(ARTIFACTS / "capture-mobile.png"), full_page=True)
-        assert not page.locator(".navigation").get_attribute("open")
-        page.locator(".navigation summary").click()
+        expect(page.locator(".navigation")).not_to_be_visible()
+        page.get_by_role("button", name="Menu", exact=True).click()
         assert page.get_by_role("link", name="Overview", exact=True).is_visible()
+        page.set_viewport_size({"width": 1366, "height": 768})
+        page.goto(base + '/dashboard')
+        expect(page.get_by_role('link', name='Overview', exact=True)).to_be_visible()
+        expect(page.get_by_role('button', name='Appearance settings', exact=True)).to_be_in_viewport()
+        expect(page.get_by_role('button', name='Log out', exact=True)).to_be_in_viewport()
+        page.screenshot(path=str(ARTIFACTS / 'navigation-laptop.png'), full_page=True)
         page.goto(base + "/dashboard")
         page.keyboard.press("Tab")
         assert page.locator(":focus").text_content() == "Skip to content"
