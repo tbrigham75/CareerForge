@@ -1,0 +1,202 @@
+"""Isolated browser acceptance checks. Requires optional Playwright + installed Edge.
+
+Run: .venv/Scripts/python.exe scripts/ui_check.py
+Artifacts and disposable database go under ignored temp/, never the user's data.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+from cryptography.fernet import Fernet
+from playwright.sync_api import expect, sync_playwright
+
+ROOT = Path(__file__).resolve().parents[1]
+ARTIFACTS = ROOT / "temp" / "ui-review"
+ARTIFACTS.mkdir(parents=True, exist_ok=True)
+data_dir = tempfile.mkdtemp(prefix="database-", dir=ARTIFACTS)
+env = dict(
+    os.environ,
+    PYTHONPATH=str(ROOT / "backend"),
+    CAREERFORGE_DATA_DIR=data_dir,
+    CAREERFORGE_ENCRYPTION_KEY=Fernet.generate_key().decode(),
+)
+subprocess.run([sys.executable, "-m", "app.migrate"], cwd=ROOT, env=env, check=True)
+with socket.socket() as sock:
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+base = f"http://127.0.0.1:{port}"
+log = (ARTIFACTS / "server.log").open("w")
+server = subprocess.Popen(
+    [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port)],
+    cwd=ROOT,
+    env=env,
+    stdout=log,
+    stderr=log,
+)
+results = {"themes": [], "pages": [], "interactions": [], "errors": []}
+
+
+def no_overflow(page):
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), page.url
+
+
+try:
+    for _ in range(80):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                break
+        except OSError:
+            time.sleep(0.1)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(channel="msedge", headless=True)
+        context = browser.new_context(viewport={"width": 1440, "height": 1000})
+        page = context.new_page()
+        page.on("pageerror", lambda error: results["errors"].append(str(error)))
+        page.goto(base + "/setup")
+        page.get_by_label("Username", exact=True).fill("ui-review")
+        page.get_by_label("Password (12+ characters)", exact=True).fill("isolated review password")
+        page.get_by_label("Confirm password", exact=True).fill("isolated review password")
+        page.get_by_role("button", name="Create administrator").click()
+        page.get_by_label("Username", exact=True).fill("ui-review")
+        page.get_by_label("Password", exact=True).fill("isolated review password")
+        page.get_by_role("button", name="Sign in", exact=True).click()
+        page.wait_for_url("**/dashboard")
+        assert page.locator(".empty-state").is_visible()
+        page.goto(base + "/capture")
+        page.get_by_label("What did you do?").fill(
+            "Automated weekly service checks, saving two hours per week."
+        )
+        page.get_by_label("Title", exact=True).fill("Made weekly service checks repeatable")
+        page.get_by_label("Start date", exact=True).fill("2026-10-01")
+        page.get_by_label("Completion date", exact=True).fill("2026-10-07")
+        page.get_by_role("button", name="Save Completed Accomplishment").click()
+        page.wait_for_url("**/accomplishments/*")
+        record_url = page.url
+        assert page.get_by_role(
+            "heading", name="Made weekly service checks repeatable"
+        ).is_visible()
+        results["interactions"].append(
+            "Setup, login, empty dashboard, dated accomplishment creation"
+        )
+        page.goto(base + "/projects")
+        page.get_by_label("Project name").fill("Service reliability")
+        page.get_by_label("Description", exact=True).fill("Make routine work more dependable.")
+        page.get_by_role("button", name="Create project").click()
+        assert page.get_by_role("cell", name="Service reliability", exact=True).is_visible()
+        page.goto(base + "/reports")
+        page.get_by_label("Report title").fill("October progress")
+        page.locator('input[name="record_ids"]').first.check()
+        with page.expect_download() as download:
+            page.get_by_role("button", name="Generate .docx report").click()
+        assert download.value.suggested_filename.endswith(".docx")
+        page.goto(base + "/reports")
+        page.get_by_role("link", name="October progress", exact=True).click()
+        report_url = page.url
+        assert page.get_by_role("link", name="Download .docx").is_visible()
+        results["interactions"].append(
+            "Project creation and report generation with checkbox selection"
+        )
+        routes = [
+            "/dashboard",
+            "/capture",
+            "/accomplishments",
+            "/projects",
+            "/taxonomy",
+            "/reports",
+            "/exports",
+            "/imports",
+            "/operations",
+            "/providers",
+            "/audit",
+            record_url,
+            record_url + "/edit",
+            report_url,
+        ]
+        for width in [1440, 768, 390, 320]:
+            page.set_viewport_size({"width": width, "height": 1000})
+            for route in routes:
+                response = page.goto(route if route.startswith("http") else base + route)
+                assert response.status == 200, (route, response.status)
+                no_overflow(page)
+                assert page.locator("main h1").count() == 1
+                assert page.locator('input:not([type="hidden"]),textarea,select').evaluate_all(
+                    "els => els.every(e => e.labels?.length || e.getAttribute('aria-label'))"
+                ), route
+                results["pages"].append({"route": route.replace(base, ""), "width": width})
+        page.set_viewport_size({"width": 1440, "height": 1000})
+        page.goto(base + "/dashboard")
+        for theme in ["slate", "ocean", "emerald", "violet", "amber", "rose"]:
+            for mode in ["light", "dark"]:
+                page.locator(".preferences").evaluate("e => e.open = true")
+                page.get_by_label("Color theme").select_option(theme)
+                page.get_by_label("Appearance", exact=True).select_option(mode)
+                page.reload()
+                assert page.locator("html").get_attribute("data-theme") == theme
+                assert page.locator("html").get_attribute("data-mode") == mode
+                # Resolve actual CSS colors and measure WCAG luminance ratios.
+                ratios = page.evaluate("""() => {
+                  const probe = document.createElement('span'); document.body.append(probe);
+                  const color = token => { probe.style.color = `var(--${token})`; return getComputedStyle(probe).color.match(/[\\d.]+/g).slice(0,3).map(Number); };
+                  const lum = rgb => rgb.map(v => {v/=255; return v <= .04045 ? v/12.92 : ((v+.055)/1.055)**2.4;}).reduce((a,v,i)=>a+v*[.2126,.7152,.0722][i],0);
+                  const pairs = [['ink','panel'],['muted','panel'],['muted','canvas'],['muted','sidebar'],['accent','canvas'],['accent','accent-soft'],['on-accent','accent'],['danger','danger-bg'],['success','success-bg'],['warning','warning-bg'],['field-border','panel']];
+                  const result = pairs.map(([a,b]) => {const x=lum(color(a)),y=lum(color(b)); return {pair:a+'/'+b,ratio:(Math.max(x,y)+.05)/(Math.min(x,y)+.05)};}); probe.remove(); return result;
+                }""")
+                for ratio in ratios:
+                    assert ratio["ratio"] >= (
+                        3 if ratio["pair"].startswith("field-border") else 4.5
+                    ), (theme, mode, ratio)
+                page.screenshot(path=str(ARTIFACTS / f"{theme}-{mode}.png"), full_page=True)
+                results["themes"].append({"theme": theme, "mode": mode, "contrast": ratios})
+                for route in ["/capture", "/projects", "/providers", "/reports"]:
+                    assert page.goto(base + route).status == 200
+                    no_overflow(page)
+                page.goto(base + "/dashboard")
+        page.locator(".preferences").evaluate("e => e.open = true")
+        page.get_by_label("Appearance", exact=True).select_option("system")
+        for mode in ["light", "dark"]:
+            page.emulate_media(color_scheme=mode)
+            expect(page.locator("html")).to_have_attribute("data-mode", mode)
+        page.keyboard.press("Escape")
+        assert not page.locator(".preferences").get_attribute("open")
+        page.emulate_media(reduced_motion="reduce")
+        assert (
+            page.locator("button").first.evaluate("e => getComputedStyle(e).transitionDuration")
+            == "0s"
+        )
+        page.goto(base + "/capture")
+        page.get_by_label("Start date", exact=True).fill("2026-10-08")
+        page.get_by_label("Completion date", exact=True).fill("2026-10-07")
+        page.get_by_role("button", name="Save Raw Note").click()
+        assert page.locator('[aria-invalid="true"]').count() > 0
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.goto(base + "/capture")
+        page.screenshot(path=str(ARTIFACTS / "capture-mobile.png"), full_page=True)
+        assert not page.locator(".navigation").get_attribute("open")
+        page.locator(".navigation summary").click()
+        assert page.get_by_role("link", name="Overview", exact=True).is_visible()
+        page.goto(base + "/dashboard")
+        page.keyboard.press("Tab")
+        assert page.locator(":focus").text_content() == "Skip to content"
+        page.keyboard.press("Enter")
+        assert page.locator(":focus").get_attribute("id") == "main"
+        results["interactions"].append(
+            "Theme persistence, live OS changes, Escape, reduced motion, validation, mobile menu, keyboard skip link"
+        )
+        assert not results["errors"], results["errors"]
+        browser.close()
+    (ARTIFACTS / "results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
+    print(
+        f"PASS: {len(results['pages'])} page/viewport checks; 12 theme combinations; contrast and interaction checks. Artifacts: {ARTIFACTS}"
+    )
+finally:
+    server.terminate()
+    server.wait(timeout=15)
+    log.close()
