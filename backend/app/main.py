@@ -319,6 +319,7 @@ async def assist_capture(
     session: SessionDependency,
     csrf: Annotated[str, Form()],
     raw_note: Annotated[str, Form()] = "",
+    follow_up_answers: Annotated[str, Form()] = "",
     provider_id: Annotated[str, Form()] = "",
     remote_confirmation: Annotated[bool, Form()] = False,
     _: User = Depends(current_user),
@@ -331,11 +332,13 @@ async def assist_capture(
         return JSONResponse({"error": "Set a default model for this provider on AI Providers.", "setup_url": "/providers"}, status_code=400)
     if not raw_note.strip() or len(raw_note) > 20_000:
         return JSONResponse({"error": "Enter a note between 1 and 20,000 characters."}, status_code=400)
+    if len(follow_up_answers) > 20_000:
+        return JSONResponse({"error": "Keep follow-up answers under 20,000 characters."}, status_code=400)
     try:
         classification = classify_and_validate_url(provider.base_url)
         if classification == "remote" and not remote_confirmation:
-            return {"confirmation_required": True, "provider": provider.display_name, "raw_note": raw_note}
-        draft = await generate_draft(provider, raw_note, {"remote_confirmation": remote_confirmation})
+            return {"confirmation_required": True, "provider": provider.display_name, "raw_note": raw_note, "follow_up_answers": follow_up_answers}
+        draft = await generate_draft(provider, raw_note, {"remote_confirmation": remote_confirmation, "follow_up_answers": follow_up_answers})
     except Exception:
         return JSONResponse({"error": "AI assistance failed. Check the provider connection and default model, then retry. Your form has not been changed."}, status_code=502)
     values = draft.model_dump()

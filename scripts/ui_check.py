@@ -172,6 +172,47 @@ try:
         page.get_by_role("button", name="Replace Title with suggestion", exact=True).click()
         expect(page.get_by_label("Title", exact=True)).to_have_value("Patched servers")
         page.unroute("**/capture/assist")
+        page.get_by_label("What was the verified outcome?", exact=True).fill(
+            "All services restarted successfully."
+        )
+        page.get_by_label("Action", exact=True).fill("My manually refined action")
+        page.route(
+            "**/capture/assist",
+            lambda route: route.fulfill(status=502, json={"error": "Simulated provider outage"}),
+        )
+        page.get_by_role("button", name="Update suggestions with my answers", exact=True).click()
+        expect(page.locator("#assist-status")).to_have_text("Simulated provider outage")
+        expect(page.get_by_label("What was the verified outcome?", exact=True)).to_have_value(
+            "All services restarted successfully."
+        )
+        page.unroute("**/capture/assist")
+
+        def refine_response(route):
+            from urllib.parse import parse_qs
+
+            submitted = parse_qs(route.request.post_data)
+            assert "All services restarted successfully." in submitted["follow_up_answers"][0]
+            assert submitted["raw_note"][0] == "Patched four Linux servers."
+            route.fulfill(
+                json={
+                    "draft": {
+                        "title": "Patched servers",
+                        "action": "Suggested new action",
+                        "metric": "Four servers",
+                        "impact": "All services restarted successfully.",
+                        "questions": [],
+                    }
+                }
+            )
+
+        page.route("**/capture/assist", refine_response)
+        page.get_by_role("button", name="Update suggestions with my answers", exact=True).click()
+        expect(page.get_by_label("Impact", exact=True)).to_have_value(
+            "All services restarted successfully."
+        )
+        expect(page.get_by_label("Action", exact=True)).to_have_value("My manually refined action")
+        expect(page.get_by_label("What did you do?")).to_have_value("Patched four Linux servers.")
+        page.unroute("**/capture/assist")
         results["interactions"].append(
             "AI setup guidance and simulated autofill: title preservation, explicit replacement, Action/Metric/Impact and unchanged raw note"
         )

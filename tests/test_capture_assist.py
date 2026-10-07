@@ -45,11 +45,16 @@ def test_assist_remote_confirmation_and_no_save(logged_in, monkeypatch):
         "csrf": token(logged_in),
         "provider_id": provider_id,
         "raw_note": "Patched four Linux servers.",
+        "follow_up_answers": "Question: What outcome?\nAnswer: Verified all services restarted.",
     }
-    assert logged_in.post("/capture/assist", data=data).json()["confirmation_required"]
+    review = logged_in.post("/capture/assist", data=data).json()
+    assert review["confirmation_required"]
+    assert review["follow_up_answers"] == data["follow_up_answers"]
     generate.assert_not_awaited()
     data["remote_confirmation"] = "true"
     result = logged_in.post("/capture/assist", data=data).json()["draft"]
+    assert generate.await_args.args[1] == data["raw_note"]
+    assert generate.await_args.args[2]["follow_up_answers"] == data["follow_up_answers"]
     assert result["action"] == "Patched four servers."
     assert result["metric"] == "[More information needed]"
     assert result["impact"] == "[More information needed]"
@@ -60,3 +65,5 @@ def test_assist_remote_confirmation_and_no_save(logged_in, monkeypatch):
     response = logged_in.post("/capture/assist", data=data)
     assert response.status_code == 502
     assert "private failure" not in response.text
+    data["follow_up_answers"] = "x" * 20_001
+    assert logged_in.post("/capture/assist", data=data).status_code == 400
