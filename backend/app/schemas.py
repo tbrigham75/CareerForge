@@ -48,6 +48,8 @@ class AIDraftResponse(BaseModel):
     action: str
     metric: str
     impact: str
+    metric_question: str = ""
+    impact_question: str = ""
     supporting_narrative: str
     suggested_categories: list[str] = Field(default_factory=list)
     suggested_tags: list[str] = Field(default_factory=list)

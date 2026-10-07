@@ -342,10 +342,27 @@ async def assist_capture(
     except Exception:
         return JSONResponse({"error": "AI assistance failed. Check the provider connection and default model, then retry. Your form has not been changed."}, status_code=502)
     values = draft.model_dump()
+    # Capture coaching focuses on missing deliverables, not generic model curiosity.
+    values["questions"] = []
+    # Missing-field prompts are rendered beside the fields; do not reintroduce
+    # unrelated model questions through a second generic placeholder list.
+    values["placeholders"] = []
+    field_questions = {}
+    subject = " ".join(raw_note.split())[:180]
+    for field, fallback in {
+        "metric": f'For this work ("{subject}"), what count, scope, frequency, or measured before-and-after result can you confirm?',
+        "impact": f'For this work ("{subject}"), what changed for the people or systems involved—what became possible, easier, or more reliable?',
+    }.items():
+        value = values[field].strip()
+        missing = not value or bool(re.search(r"\[|missing.information|not (?:provided|specified|available)|more information needed|unknown|\btbd\b", value, re.I))
+        if missing:
+            field_questions[field] = values.get(f"{field}_question", "").strip() or fallback
+    values["field_questions"] = field_questions
     for field, question in {"action": "What did you do?", "metric": "What measurable result or scope can you confirm?", "impact": "What outcome can you confirm?"}.items():
         if not values[field].strip():
             values[field] = "[More information needed]"
-            values["questions"].append(question)
+            if field == "action":
+                values["questions"].append(question)
     return {"draft": values}
 
 

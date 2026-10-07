@@ -158,7 +158,8 @@ try:
                         "suggested_technologies": [],
                         "suggested_tags": ["patching"],
                         "suggested_categories": [],
-                        "questions": ["What was the verified outcome?"],
+                        "field_questions": {"impact": "What was the verified outcome?"},
+                        "questions": [],
                     }
                 }
             ),
@@ -180,7 +181,7 @@ try:
             "**/capture/assist",
             lambda route: route.fulfill(status=502, json={"error": "Simulated provider outage"}),
         )
-        page.get_by_role("button", name="Update suggestions with my answers", exact=True).click()
+        page.get_by_role("button", name="Update Impact from my answer", exact=True).click()
         expect(page.locator("#assist-status")).to_have_text("Simulated provider outage")
         expect(page.get_by_label("What was the verified outcome?", exact=True)).to_have_value(
             "All services restarted successfully."
@@ -192,6 +193,7 @@ try:
 
             submitted = parse_qs(route.request.post_data)
             assert "All services restarted successfully." in submitted["follow_up_answers"][0]
+            assert "Field: impact" in submitted["follow_up_answers"][0]
             assert submitted["raw_note"][0] == "Patched four Linux servers."
             route.fulfill(
                 json={
@@ -206,7 +208,7 @@ try:
             )
 
         page.route("**/capture/assist", refine_response)
-        page.get_by_role("button", name="Update suggestions with my answers", exact=True).click()
+        page.get_by_role("button", name="Update Impact from my answer", exact=True).click()
         expect(page.get_by_label("Impact", exact=True)).to_have_value(
             "All services restarted successfully."
         )

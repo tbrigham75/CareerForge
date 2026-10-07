@@ -85,7 +85,7 @@ def _headers(provider: AIProvider) -> dict[str, str]:
 
 def _prompt(raw_note: str, metadata: dict[str, object]) -> str:
     return f"""You are CareerForge's factual writing assistant. Return ONLY one JSON object with keys:
-title, action, metric, impact, supporting_narrative, suggested_categories, suggested_tags,
+title, action, metric, impact, metric_question, impact_question, supporting_narrative, suggested_categories, suggested_tags,
 suggested_technologies, suggested_systems, identified_facts, assumptions, placeholders, questions, quality_checks.
 Use only facts supplied below. Never invent counts, dates, systems, time savings, downtime,
 security or business outcomes. For missing facts use visible bracketed placeholders and concise questions.
@@ -99,6 +99,26 @@ Ask at most three specific, optional questions that would materially improve Act
 Metric or Impact. Avoid broad implementation questions, generic requests for assumptions,
 and questions already answered by the note. It is acceptable to return no questions.
 If the user says a fact is unknown, do not invent it or keep asking for it.
+
+Metric and Impact are the primary deliverables, not optional extras:
+- Metric: extract any supplied count, scope, frequency, duration, before/after value or
+  measured result. A scope count is valid even without a percentage or time saving.
+- Impact: express the concrete benefit or capability explicitly described by the user.
+  Qualitative impact is valid; it does NOT require a number. Do not confuse a stated
+  intended benefit with a verified outcome; label intended benefits as intended.
+- Read the raw note AND all follow_up_answers before deciding information is missing.
+- If enough evidence exists, fill the field and leave its *_question empty.
+- Otherwise return a specific metric_question or impact_question using the actual
+  task, objects, people or outcome in the note. Do not ask about app internals unless
+  that is necessary to describe the user's result. Do not put these questions only in
+  the generic questions array. Do not substitute generic quality checks for help.
+Examples:
+Note: 'Patched four Linux servers and verified all services restarted.'
+Metric: 'Four Linux servers patched.' Impact: 'Verified services restarted after patching.'
+Note: 'Built a change tracker so our team can see what changed between runs.'
+Impact: 'Enabled the team to see changes between runs.'
+Metric question: 'How many systems or records does the change tracker cover, or how often is it used?'
+Never copy numbers or outcomes from these examples into an unrelated accomplishment.
 
 Raw note:
 {raw_note}

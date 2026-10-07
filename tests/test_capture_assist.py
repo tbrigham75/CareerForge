@@ -58,7 +58,15 @@ def test_assist_remote_confirmation_and_no_save(logged_in, monkeypatch):
     assert result["action"] == "Patched four servers."
     assert result["metric"] == "[More information needed]"
     assert result["impact"] == "[More information needed]"
-    assert len(result["questions"]) == 2
+    assert set(result["field_questions"]) == {"metric", "impact"}
+    assert "four Linux servers" in result["field_questions"]["metric"]
+    generate.return_value = AIDraftResponse(title="Patched", action="Patched servers", metric="[missing-information]", impact="Verified services restarted.", metric_question="How many servers were patched?", supporting_narrative="")
+    targeted = logged_in.post("/capture/assist", data=data).json()["draft"]
+    assert targeted["field_questions"] == {"metric": "How many servers were patched?"}
+    generate.return_value = AIDraftResponse(title="Tracked services", action="Built tracker", metric="12 services", impact="Team can see changes between runs", metric_question="How many services?", impact_question="What changed?", questions=["What are your future plans?"], supporting_narrative="")
+    complete = logged_in.post("/capture/assist", data=data).json()["draft"]
+    assert complete["field_questions"] == {}
+    assert complete["questions"] == []
     with SessionLocal() as session:
         assert session.scalar(select(func.count()).select_from(Accomplishment)) == 0
     generate.side_effect = RuntimeError("private failure")
