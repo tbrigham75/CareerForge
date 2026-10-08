@@ -186,21 +186,49 @@ try:
         page.get_by_label("How many settings did you review?", exact=True).fill(
             "Reviewed 24 CIS settings and identified 3 exceptions."
         )
+
+        def rewrite_response(route):
+            from urllib.parse import parse_qs
+
+            submitted = parse_qs(route.request.post_data)
+            field = submitted["target_field"][0]
+            assert submitted["raw_note"][0] == "Patched four Linux servers."
+            expected = {
+                "metric": (
+                    "Reviewed 24 CIS settings and identified 3 exceptions.",
+                    "Assessed 24 CIS settings, identifying 3 exceptions.",
+                ),
+                "impact": (
+                    "All services restarted successfully.",
+                    "Verified successful restart of all services.",
+                ),
+            }
+            answer, wording = expected[field]
+            assert submitted["target_answer"][0] == answer
+            route.fulfill(json={"field": field, "suggestion": wording})
+
+        page.route("**/capture/assist", rewrite_response)
         page.get_by_role("button", name="Update Metric from my answer", exact=True).click()
         expect(page.get_by_label("Metric", exact=True)).to_have_value(
-            "Reviewed 24 CIS settings and identified 3 exceptions."
+            "Assessed 24 CIS settings, identifying 3 exceptions."
         )
         expect(page.get_by_label("Impact", exact=True)).to_have_value("[Confirm outcome]")
         page.get_by_role("button", name="Update Impact from my answer", exact=True).click()
         expect(page.get_by_label("Impact", exact=True)).to_have_value(
-            "All services restarted successfully."
+            "Verified successful restart of all services."
         )
         expect(page.get_by_label("Supporting evidence / notes", exact=True)).to_have_value(
             "Keep this evidence unchanged."
         )
+        page.unroute("**/capture/assist")
         page.route(
             "**/capture/assist",
             lambda route: route.fulfill(status=502, json={"error": "Simulated provider outage"}),
+        )
+        page.get_by_role("button", name="Update Metric from my answer", exact=True).click()
+        expect(page.locator("#assist-status")).to_have_text("Simulated provider outage")
+        expect(page.get_by_label("Metric", exact=True)).to_have_value(
+            "Assessed 24 CIS settings, identifying 3 exceptions."
         )
         page.get_by_role("button", name="Help me fill this out", exact=True).click()
         expect(page.locator("#assist-status")).to_have_text("Simulated provider outage")
@@ -232,11 +260,11 @@ try:
         page.route("**/capture/assist", refine_response)
         page.get_by_role("button", name="Help me fill this out", exact=True).click()
         expect(page.get_by_label("Impact", exact=True)).to_have_value(
-            "All services restarted successfully."
+            "Verified successful restart of all services."
         )
         expect(page.get_by_label("Action", exact=True)).to_have_value("My manually refined action")
         expect(page.get_by_label("Metric", exact=True)).to_have_value(
-            "Reviewed 24 CIS settings and identified 3 exceptions."
+            "Assessed 24 CIS settings, identifying 3 exceptions."
         )
         expect(page.get_by_label("Supporting evidence / notes", exact=True)).to_have_value(
             "Keep this evidence unchanged."

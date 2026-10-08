@@ -8,7 +8,8 @@
   const fieldAnswers = new Map();
   const lastAI = new Map();
   const appliedAnswers = new Map();
-  function applyFieldAnswer(field, answer) {
+  async function applyFieldAnswer(field, answer) {
+    if (button.disabled) return;
     const value = answer.trim();
     if (!value) {
       status.textContent = `Enter an answer for ${names[field]} first.`;
@@ -16,13 +17,43 @@
       return;
     }
     const input = form.elements[field];
-    input.value = value;
-    input.dispatchEvent(new Event('input', {bubbles: true}));
-    // An explicit answer belongs to the user, not to a model-generated revision.
-    lastAI.delete(field);
-    appliedAnswers.set(field, value);
-    status.textContent = `Your answer was placed in ${names[field]}. No other fields were changed. You can edit it before saving.`;
-    input.focus();
+    const original = input.value;
+    const note = form.elements.raw_note.value;
+    const provider = form.elements.provider_id.value;
+    const question = fieldAnswers.get(field)?.question || '';
+    button.disabled = true;
+    form.querySelectorAll('[data-field-answer], [data-refine-field], #assist-results button, #assist-results textarea').forEach(control => control.disabled = true);
+    status.textContent = `AI is wording your answer for ${names[field]}…`;
+    async function rewrite(confirmed = false) {
+      const response = await fetch('/capture/assist', {method: 'POST', body: new URLSearchParams({csrf: form.elements.csrf.value, raw_note: note, provider_id: provider, target_field: field, target_answer: value, target_question: question, remote_confirmation: String(confirmed)})});
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Your session may have expired. Copy your work before signing in again.');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'AI rewriting failed. Your fields are unchanged.');
+      if (data.confirmation_required) {
+        if (!window.confirm(`Send this note and answer to remote provider ${data.provider}?\n\n${data.raw_note}\n\n${data.follow_up_answers}`)) return null;
+        return rewrite(true);
+      }
+      if (data.field !== field || typeof data.suggestion !== 'string' || !data.suggestion.trim()) throw new Error('AI returned no usable wording for this field. Please retry.');
+      return data.suggestion;
+    }
+    try {
+      const suggestion = await rewrite();
+      if (!suggestion) { status.textContent = 'Canceled. Your fields are unchanged.'; return; }
+      if (input.value !== original || form.elements.raw_note.value !== note || form.elements.provider_id.value !== provider) {
+        status.textContent = 'Your note, provider or field changed while AI was working. Your edits were preserved; click the field update button again when ready.';
+        return;
+      }
+      input.value = suggestion;
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+      lastAI.delete(field);
+      appliedAnswers.set(field, value);
+      status.textContent = `AI wording was placed in ${names[field]}. No other fields changed. Please review it before saving.`;
+      input.focus();
+    } catch (error) { status.textContent = error.message; }
+    finally {
+      button.disabled = false;
+      form.querySelectorAll('[data-field-answer], [data-refine-field], #assist-results button, #assist-results textarea').forEach(control => control.disabled = false);
+    }
   }
   const names = {title: 'Title', action: 'Action', metric: 'Metric', impact: 'Impact', supporting_narrative: 'Supporting evidence / notes', systems: 'Systems', technologies: 'Technologies', tags: 'Tags', categories: 'Categories'};
   async function assist() {
@@ -32,7 +63,7 @@
     if (!note.trim()) { status.textContent = 'First describe what you did in the note above.'; form.elements.raw_note.focus(); return; }
     results.querySelectorAll('[data-question]').forEach(input => answers.set(input.dataset.question, input.value));
     form.querySelectorAll('[data-field-answer]').forEach(input => fieldAnswers.set(input.dataset.fieldAnswer, {question: input.dataset.questionText, answer: input.value}));
-    const submittedFieldAnswers = new Map([...fieldAnswers].filter(([field, item]) => item.answer.trim() && !(appliedAnswers.get(field) === item.answer.trim() && form.elements[field].value !== appliedAnswers.get(field))).map(([field, item]) => [field, item.answer.trim()]));
+    const submittedFieldAnswers = new Map([...fieldAnswers].filter(([field, item]) => item.answer.trim() && appliedAnswers.get(field) !== item.answer.trim()).map(([field, item]) => [field, item.answer.trim()]));
     const followUp = [...[...fieldAnswers].filter(([, item]) => item.answer.trim()).map(([field, item]) => `Field: ${field}\nQuestion: ${item.question}\nAnswer: ${item.answer}`), ...[...answers].filter(([, answer]) => answer.trim()).map(([question, answer]) => `Question: ${question}\nAnswer: ${answer}`)].join('\n\n');
     button.disabled = true;
     results.querySelectorAll('button, textarea').forEach(control => control.disabled = true);
@@ -90,7 +121,7 @@
         const label = document.createElement('label'); label.textContent = question;
         const input = document.createElement('textarea'); input.dataset.fieldAnswer = field; input.dataset.questionText = question; input.value = fieldAnswers.get(field)?.answer || ''; input.maxLength = 10000;
         const update = document.createElement('button'); update.type = 'button'; update.dataset.refineField = field; update.textContent = `Update ${names[field]} from my answer`;
-        const hint = document.createElement('p'); hint.className = 'muted'; hint.textContent = `Your answer goes directly into ${names[field]}; other fields will not change.`;
+        const hint = document.createElement('p'); hint.className = 'muted'; hint.textContent = `AI will polish your answer and update only ${names[field]}. Other fields will not change.`;
         update.addEventListener('click', () => {
           fieldAnswers.set(field, {question, answer: input.value});
           applyFieldAnswer(field, input.value);

@@ -135,11 +135,16 @@ def browse_local_files(
             raise ValueError("Choose a repository folder first.")
         return browse_paths(kind, path, repository, select_path, offset)
     except git_ops.GitOperationError:
-        return JSONResponse({"error": "This folder is not a usable Git repository."}, status_code=400)
+        return JSONResponse(
+            {"error": "This folder is not a usable Git repository."}, status_code=400
+        )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     except (OSError, RuntimeError, subprocess.TimeoutExpired):
-        return JSONResponse({"error": "This location is unavailable or you do not have permission to browse it."}, status_code=400)
+        return JSONResponse(
+            {"error": "This location is unavailable or you do not have permission to browse it."},
+            status_code=400,
+        )
 
 
 def parse_date(value: str) -> date | None:
@@ -320,6 +325,9 @@ async def assist_capture(
     csrf: Annotated[str, Form()],
     raw_note: Annotated[str, Form()] = "",
     follow_up_answers: Annotated[str, Form()] = "",
+    target_field: Annotated[str, Form()] = "",
+    target_answer: Annotated[str, Form()] = "",
+    target_question: Annotated[str, Form()] = "",
     provider_id: Annotated[str, Form()] = "",
     remote_confirmation: Annotated[bool, Form()] = False,
     _: User = Depends(current_user),
@@ -327,21 +335,84 @@ async def assist_capture(
     require_csrf(request, csrf)
     provider = session.get(AIProvider, provider_id) if provider_id else None
     if not provider or not provider.enabled:
-        return JSONResponse({"error": "Set up an enabled AI provider first.", "setup_url": "/providers"}, status_code=400)
+        return JSONResponse(
+            {"error": "Set up an enabled AI provider first.", "setup_url": "/providers"},
+            status_code=400,
+        )
     if not provider.default_model.strip():
-        return JSONResponse({"error": "Set a default model for this provider on AI Providers.", "setup_url": "/providers"}, status_code=400)
+        return JSONResponse(
+            {
+                "error": "Set a default model for this provider on AI Providers.",
+                "setup_url": "/providers",
+            },
+            status_code=400,
+        )
     if not raw_note.strip() or len(raw_note) > 20_000:
-        return JSONResponse({"error": "Enter a note between 1 and 20,000 characters."}, status_code=400)
+        return JSONResponse(
+            {"error": "Enter a note between 1 and 20,000 characters."}, status_code=400
+        )
     if len(follow_up_answers) > 20_000:
-        return JSONResponse({"error": "Keep follow-up answers under 20,000 characters."}, status_code=400)
+        return JSONResponse(
+            {"error": "Keep follow-up answers under 20,000 characters."}, status_code=400
+        )
+    if target_field and (
+        target_field not in {"metric", "impact"}
+        or not target_answer.strip()
+        or len(target_answer) > 10_000
+        or len(target_question) > 10_000
+    ):
+        return JSONResponse(
+            {"error": "Choose Metric or Impact and provide an answer of up to 10,000 characters."},
+            status_code=400,
+        )
+    if target_field:
+        follow_up_answers = (
+            f"Field: {target_field}\nQuestion: {target_question}\nAnswer: {target_answer}"
+        )
     try:
         classification = classify_and_validate_url(provider.base_url)
         if classification == "remote" and not remote_confirmation:
-            return {"confirmation_required": True, "provider": provider.display_name, "raw_note": raw_note, "follow_up_answers": follow_up_answers}
-        draft = await generate_draft(provider, raw_note, {"remote_confirmation": remote_confirmation, "follow_up_answers": follow_up_answers})
+            return {
+                "confirmation_required": True,
+                "provider": provider.display_name,
+                "raw_note": raw_note,
+                "follow_up_answers": follow_up_answers,
+            }
+        draft = await generate_draft(
+            provider,
+            raw_note,
+            {
+                "remote_confirmation": remote_confirmation,
+                "follow_up_answers": follow_up_answers,
+                "target_field": target_field,
+            },
+        )
     except Exception:
-        return JSONResponse({"error": "AI assistance failed. Check the provider connection and default model, then retry. Your form has not been changed."}, status_code=502)
+        return JSONResponse(
+            {
+                "error": "AI assistance failed. Check the provider connection and default model, then retry. Your form has not been changed."
+            },
+            status_code=502,
+        )
     values = draft.model_dump()
+    if target_field:
+        suggestion = values[target_field].strip()
+        if (
+            not suggestion
+            or len(suggestion) > 20_000
+            or re.search(
+                r"\[|missing.information|more information needed|quantitative measure not provided",
+                suggestion,
+                re.I,
+            )
+        ):
+            return JSONResponse(
+                {
+                    "error": f"The AI did not return usable wording for {target_field.title()}. Your answer and existing fields are unchanged. Please retry."
+                },
+                status_code=502,
+            )
+        return {"field": target_field, "suggestion": suggestion}
     # Capture coaching focuses on missing deliverables, not generic model curiosity.
     values["questions"] = []
     # Missing-field prompts are rendered beside the fields; do not reintroduce
@@ -354,11 +425,21 @@ async def assist_capture(
         "impact": f'For this work ("{subject}"), what changed for the people or systems involved—what became possible, easier, or more reliable?',
     }.items():
         value = values[field].strip()
-        missing = not value or bool(re.search(r"\[|missing.information|not (?:provided|specified|available)|more information needed|unknown|\btbd\b", value, re.I))
+        missing = not value or bool(
+            re.search(
+                r"\[|missing.information|not (?:provided|specified|available)|more information needed|unknown|\btbd\b",
+                value,
+                re.I,
+            )
+        )
         if missing:
             field_questions[field] = values.get(f"{field}_question", "").strip() or fallback
     values["field_questions"] = field_questions
-    for field, question in {"action": "What did you do?", "metric": "What measurable result or scope can you confirm?", "impact": "What outcome can you confirm?"}.items():
+    for field, question in {
+        "action": "What did you do?",
+        "metric": "What measurable result or scope can you confirm?",
+        "impact": "What outcome can you confirm?",
+    }.items():
         if not values[field].strip():
             values[field] = "[More information needed]"
             if field == "action":
@@ -1260,7 +1341,9 @@ async def reorder_report_items(
     for position, (item_id, _) in enumerate(requested, start=1):
         item_map[item_id].position = position
     ordered_items = [item_map[item_id] for item_id, _ in requested]
-    session.add(AuditEvent(event_type="report.items_reordered", metadata_json={"report_id": report.id}))
+    session.add(
+        AuditEvent(event_type="report.items_reordered", metadata_json={"report_id": report.id})
+    )
     session.flush()
     regenerate_docx(session, report, ordered_items)
     return redirect(f"/reports/{report.id}")
@@ -1468,7 +1551,9 @@ def commit_export(
     allowed = set(latest_export_files(session, profile.id))
     selected = files or []
     if not selected or not set(selected).issubset(allowed):
-        raise HTTPException(status_code=400, detail="Select one or more files from the latest export.")
+        raise HTTPException(
+            status_code=400, detail="Select one or more files from the latest export."
+        )
     repo_files = [str(Path(profile.export_subdirectory) / filename) for filename in selected]
     try:
         commit_id = git_ops.commit(
@@ -1501,7 +1586,9 @@ def push_export(
 ):
     require_csrf(request, csrf)
     if confirmation != "PUSH":
-        raise HTTPException(status_code=400, detail="Type PUSH to send the clean branch to its remote.")
+        raise HTTPException(
+            status_code=400, detail="Type PUSH to send the clean branch to its remote."
+        )
     profile = session.get(GitRepositoryProfile, profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Git profile not found.")
@@ -1514,7 +1601,11 @@ def push_export(
     session.add(
         AuditEvent(
             event_type="git_export.pushed",
-            metadata_json={"profile_id": profile.id, "remote": remote.strip(), "branch": profile.branch},
+            metadata_json={
+                "profile_id": profile.id,
+                "remote": remote.strip(),
+                "branch": profile.branch,
+            },
         )
     )
     session.commit()
