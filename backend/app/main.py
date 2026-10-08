@@ -7,6 +7,7 @@ import logging
 import math
 import re
 import secrets
+import sqlite3
 import subprocess
 from collections import defaultdict
 from contextlib import asynccontextmanager, suppress
@@ -20,6 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -51,7 +53,14 @@ from app.security import (
     require_csrf,
     verify_password,
 )
-from app.services import accomplishments, git_ops, native_picker, taxonomy, trash
+from app.services import (
+    accomplishments,
+    database_maintenance,
+    git_ops,
+    native_picker,
+    taxonomy,
+    trash,
+)
 from app.services.ai import (
     ProviderSafetyError,
     classify_and_validate_url,
@@ -826,7 +835,136 @@ def delete(
 @app.get("/projects")
 def projects_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
     projects = list(session.scalars(select(Project).order_by(Project.name)))
-    return templates.TemplateResponse("projects.html", context(request, projects=projects))
+    return templates.TemplateResponse(
+        "projects.html",
+        context(
+            request,
+            projects=projects,
+            message="Project updated." if request.query_params.get("saved") == "1" else None,
+        ),
+    )
+
+
+@app.get("/projects/{project_id}/edit")
+def edit_project_page(
+    project_id: str, request: Request, session: SessionDependency, _: User = Depends(current_user)
+):
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "Project not found.")
+    return templates.TemplateResponse(
+        "project_edit.html",
+        context(
+            request,
+            project=project,
+            values={"name": project.name, "description": project.description},
+        ),
+    )
+
+
+@app.post("/projects/{project_id}/edit")
+def edit_project(
+    project_id: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    name: Annotated[str, Form()] = "",
+    description: Annotated[str, Form()] = "",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "Project not found.")
+    name, description = name.strip(), description.strip()
+    error = None
+    status = 400
+    if not name or len(name) > 200 or len(description) > 10000:
+        error = "Provide a project name (up to 200 characters) and a description up to 10,000 characters."
+    elif session.scalar(
+        select(Project).where(Project.id != project.id, func.lower(Project.name) == name.lower())
+    ):
+        error, status = "Another project already uses that name.", 409
+    else:
+        project.name, project.description = name, description
+        session.add(AuditEvent(event_type="project.updated", metadata_json={"id": project.id}))
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            error, status = "Another project already uses that name.", 409
+    if error:
+        return templates.TemplateResponse(
+            "project_edit.html",
+            context(
+                request,
+                project=project,
+                values={"name": name, "description": description},
+                error=error,
+            ),
+            status_code=status,
+        )
+    return redirect("/projects?saved=1")
+
+
+def database_view(request: Request, session: Session, **values: object):
+    return templates.TemplateResponse(
+        "database.html",
+        context(
+            request,
+            storage=database_maintenance.storage_summary(),
+            trash_count=session.scalar(
+                select(func.count())
+                .select_from(Accomplishment)
+                .where(Accomplishment.deleted_at.is_not(None))
+            ),
+            pending_count=session.scalar(select(func.count()).select_from(PendingFileDeletion)),
+            **values,
+        ),
+    )
+
+
+@app.get("/database")
+def database_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
+    return database_view(request, session, message=request.session.pop("database_message", None))
+
+
+@app.post("/database/{action}")
+def database_action(
+    action: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    confirmation: Annotated[str, Form()] = "",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    if action not in {"check", "cleanup", "compact"}:
+        raise HTTPException(404, "Unknown maintenance action.")
+    if action == "compact" and confirmation != "COMPACT":
+        raise HTTPException(400, "Type COMPACT to confirm database compaction.")
+    try:
+        if action == "check":
+            return database_view(request, session, health=database_maintenance.check_health())
+        if action == "cleanup":
+            with trash.lock:
+                trash.cleanup_files(session)
+            message = "File cleanup retried. See Trash for any remaining errors."
+        else:
+            # Release this request's read transaction before SQLite acquires its write lock.
+            session.commit()
+            backup = database_maintenance.compact_database()
+            message = f"Database compacted. Database-only backup saved: {backup.name}"
+        session.add(AuditEvent(event_type=f"database.{action}", metadata_json={}))
+        session.commit()
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        logging.getLogger(__name__).exception("Database maintenance failed")
+        raise HTTPException(
+            503,
+            "Maintenance could not finish. The database may be busy, or storage unavailable. No automatic repair was attempted. Check server logs and retry after other work finishes.",
+        ) from exc
+    request.session["database_message"] = message
+    return redirect("/database")
 
 
 @app.get("/trash")
@@ -983,6 +1121,11 @@ def create_project(
     _: User = Depends(current_user),
 ):
     require_csrf(request, csrf)
+    if not name.strip() or len(name.strip()) > 200 or len(description.strip()) > 10000:
+        raise HTTPException(
+            400,
+            "Provide a project name up to 200 characters and description up to 10,000 characters.",
+        )
     if session.scalar(select(Project).where(Project.name == name.strip())):
         return templates.TemplateResponse(
             "projects.html",

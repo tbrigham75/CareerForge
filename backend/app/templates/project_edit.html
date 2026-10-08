@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/projects">← Projects</a></p><h1>Edit project</h1>
+<p>Update the name or description without changing linked accomplishments.</p>
+<form action="/projects/{{ project.id }}/edit" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label for="project-name">Project name</label><input id="project-name" name="name" required maxlength="200" value="{{ values.name }}"><label for="project-description">Description</label><textarea id="project-description" name="description" rows="5" maxlength="10000">{{ values.description }}</textarea><button>Save project</button> <a class="button secondary" href="/projects">Cancel</a></form>
+{% endblock %}

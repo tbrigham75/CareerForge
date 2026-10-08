@@ -532,6 +532,29 @@ try:
         page.goto(record_url)
         page.get_by_role("button", name="Restore from archive", exact=True).click()
         results["interactions"].append("Settings Trash restoration and separate archive recovery")
+        page.goto(base + "/projects")
+        page.get_by_role("link", name="Service reliability", exact=True).click()
+        project_edit_url = page.url
+        page.get_by_label("Description", exact=True).fill("Updated after creating the project.")
+        page.get_by_role("button", name="Save project", exact=True).click()
+        assert page.get_by_text("Project updated.", exact=True).is_visible()
+        page.get_by_role("link", name="Service reliability", exact=True).click()
+        assert (
+            page.get_by_label("Description", exact=True).input_value()
+            == "Updated after creating the project."
+        )
+        page.goto(base + "/database")
+        page.get_by_role("button", name="Check database health", exact=True).click()
+        assert page.get_by_role("heading", name="Health checks passed", exact=True).is_visible()
+        page.get_by_label("Type COMPACT to confirm", exact=True).fill("COMPACT")
+        page.get_by_role("button", name="Back up and compact database", exact=True).click()
+        assert page.get_by_role("status").filter(has_text="Database compacted").is_visible()
+        page.get_by_role("button", name="Retry file cleanup", exact=True).click()
+        assert page.get_by_role("status").filter(has_text="File cleanup retried").is_visible()
+        page.screenshot(path=str(ARTIFACTS / "database-mobile.png"), full_page=True)
+        results["interactions"].append(
+            "Project editing, database health, snapshot-backed compaction, and cleanup retry"
+        )
         routes = [
             "/dashboard",
             "/capture",
@@ -545,6 +568,8 @@ try:
             "/providers",
             "/audit",
             "/trash",
+            "/database",
+            project_edit_url,
             record_url,
             record_url + "/edit",
             report_url,

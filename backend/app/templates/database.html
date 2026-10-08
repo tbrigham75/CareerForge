@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Database Maintenance</h1>
+<p>Check local storage and database health. Routine compaction is not necessary: SQLite reuses free space automatically.</p>
+<section class="panel"><h2>Storage summary</h2><dl>
+<dt>Database</dt><dd>{{ '%.1f' | format(storage.database_bytes / 1024) }} KB</dd>
+<dt>Reusable space inside database</dt><dd>{{ '%.1f' | format(storage.reusable_bytes / 1024) }} KB</dd>
+<dt>Uploaded documents</dt><dd>{{ '%.1f' | format(storage.attachment_bytes / 1024) }} KB</dd>
+<dt>Accomplishments in Trash</dt><dd>{{ trash_count }}</dd>
+<dt>Files pending cleanup</dt><dd>{{ pending_count }}</dd></dl>
+{% if storage.unreadable_files %}<p class="notice">Some files could not be measured; document storage may be incomplete.</p>{% endif %}
+<a href="/database">Refresh summary</a></section>
+<section class="panel"><h2>Check health</h2><p>Check database integrity and broken relationships. This does not change or repair your records.</p>
+<form action="/database/check" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button>Check database health</button></form>
+{% if health %}<div role="status"><h3>{{ 'Health checks passed' if health.healthy else 'Database needs attention' }}</h3><ul>{% for result in health.integrity %}<li>Integrity: {{ result }}</li>{% endfor %}<li>Broken relationships: {{ health.relationship_issues }}</li></ul>{% if not health.healthy %}<p>Preserve your backups and seek technical help before making further changes. Compaction will not repair corruption.</p>{% endif %}</div>{% endif %}</section>
+<section class="panel"><h2>File cleanup and Trash</h2><p>Retry previously queued file removals. This does not delete additional accomplishments or scan for arbitrary unused files.</p><form action="/database/cleanup" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="secondary">Retry file cleanup</button></form><p><a href="/trash">Open Trash to review deleted items and cleanup errors</a></p></section>
+<section class="panel"><h2>Compact database</h2><p>Optional after substantial deletions. A verified database-only snapshot is saved in your backups folder first. Uploaded documents are not included in this snapshot; use <a href="/operations">Backups</a> for a full backup.</p><p>Compaction may briefly block other saves. Avoid editing in other tabs while it runs. It does not empty Trash, delete backups, or erase report copies.</p><form action="/database/compact" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label>Type COMPACT to confirm<input name="confirmation" required pattern="COMPACT" autocomplete="off"></label><button class="secondary">Back up and compact database</button></form></section>
+{% endblock %}
