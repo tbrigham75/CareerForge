@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Trash</h1>
+<p>Recover deleted accomplishments here for 30 days. Restoration preserves their project links, documents, and previous archive status.</p>
+<p class="notice">Expired items are permanently removed at startup and hourly while CareerForge is running. Permanent deletion removes the accomplishment, revisions, AI drafts, evidence, and uploaded files. Existing report snapshots, exports, backups, and minimal audit history remain separate copies.</p>
+<p>Looking for archived work? <a href="/accomplishments?archived=true">Include archived accomplishments</a> and open an item to restore it. Archived work never expires.</p>
+{% if pending %}<section class="panel"><h2>File cleanup needs attention</h2><p role="status">{{ pending | length }} uploaded file(s) await cleanup. CareerForge retries hourly. Records have already been removed.</p>
+<ul>{% for item in pending %}<li>{{ item.last_error or 'Awaiting cleanup attempt.' }}</li>{% endfor %}</ul>
+<form action="/trash/cleanup" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="secondary">Retry file cleanup</button></form></section>{% endif %}
+{% for item in items %}{% set record = item.record %}<article class="panel">
+<h2>{{ record.title }}</h2><p>Deleted {{ record.deleted_at.strftime('%Y-%m-%d %H:%M') }} UTC · {{ item.days }} day(s) remaining · Expires {{ item.expires.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+<p>Restores to: {{ 'Archived' if record.is_archived else 'Active accomplishments' }} · Projects: {{ record.projects | map(attribute='name') | join(', ') or 'none' }}</p>
+<form action="/trash/{{ record.id }}/restore" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button>Restore</button></form>
+<details><summary>Delete permanently</summary><p>This cannot be undone in CareerForge.</p><form action="/trash/{{ record.id }}/delete" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label>Type DELETE to permanently delete this accomplishment<input name="confirmation" required pattern="DELETE" autocomplete="off"></label><button class="danger">Delete permanently</button></form></details>
+</article>{% else %}<p class="notice">Trash is empty.</p>{% endfor %}
+{% if items %}<section class="panel"><h2>Empty trash</h2><p>Permanently delete all {{ items | length }} trashed accomplishment(s) and their uploaded documents. This cannot be undone in CareerForge.</p><form action="/trash/empty" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label>Type EMPTY TRASH to confirm<input name="confirmation" required pattern="EMPTY TRASH" autocomplete="off"></label><button class="danger">Empty trash</button></form></section>{% endif %}
+{% endblock %}

@@ -514,6 +514,24 @@ try:
         results["interactions"].append(
             "Project creation and report generation with checkbox selection"
         )
+        page.goto(record_url)
+        page.once("dialog", lambda dialog: dialog.accept())
+        page.get_by_role("button", name="Move to trash", exact=True).click()
+        page.get_by_role("button", name="Settings", exact=True).click()
+        page.get_by_role("link", name="Trash", exact=True).click()
+        assert page.get_by_role("heading", name="Trash", exact=True).is_visible()
+        page.screenshot(path=str(ARTIFACTS / "trash-desktop.png"), full_page=True)
+        page.set_viewport_size({"width": 320, "height": 1000})
+        no_overflow(page)
+        page.screenshot(path=str(ARTIFACTS / "trash-mobile.png"), full_page=True)
+        page.get_by_role("button", name="Restore", exact=True).click()
+        assert page.get_by_text("Trash is empty.", exact=True).is_visible()
+        page.goto(record_url)
+        page.get_by_role("button", name="Archive", exact=True).click()
+        page.goto(base + "/accomplishments?archived=true")
+        page.goto(record_url)
+        page.get_by_role("button", name="Restore from archive", exact=True).click()
+        results["interactions"].append("Settings Trash restoration and separate archive recovery")
         routes = [
             "/dashboard",
             "/capture",
@@ -526,6 +544,7 @@ try:
             "/operations",
             "/providers",
             "/audit",
+            "/trash",
             record_url,
             record_url + "/edit",
             report_url,

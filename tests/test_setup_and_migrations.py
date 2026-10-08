@@ -4,6 +4,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -30,9 +31,7 @@ def test_fresh_migration_reaches_head_and_is_repeatable(tmp_path: Path):
     assert first.returncode == 0, first.stderr
     assert second.returncode == 0, second.stderr
     database = sqlite3.connect(data_dir / "data" / "careerforge.sqlite3")
-    assert database.execute("select version_num from alembic_version").fetchone() == (
-        "0005_starter_reports",
-    )
+    assert database.execute("select version_num from alembic_version").fetchone() == ("0006_trash",)
 
 
 def test_blank_data_directory_uses_local_app_data_default(tmp_path: Path):
@@ -66,8 +65,16 @@ def test_workflow_migration_preserves_legacy_labels_and_templates(tmp_path: Path
     data_dir = tmp_path / "LegacyData"
     (data_dir / "data").mkdir(parents=True)
     with sqlite3.connect(data_dir / "data" / "careerforge.sqlite3") as database:
+        database.execute(
+            "CREATE TABLE accomplishments (id VARCHAR(36) PRIMARY KEY, deleted_at DATETIME)"
+        )
+        database.execute(
+            "CREATE TABLE report_items (id VARCHAR(36) PRIMARY KEY, accomplishment_id VARCHAR(36) NOT NULL REFERENCES accomplishments(id))"
+        )
         database.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) PRIMARY KEY)")
         database.execute("INSERT INTO alembic_version VALUES ('0003_provider_retries')")
+        database.execute("INSERT INTO accomplishments VALUES ('deleted', '2020-01-01 00:00:00')")
+        database.execute("INSERT INTO report_items VALUES ('snapshot', 'deleted')")
         for table in ("categories", "tags", "technologies", "skills", "competencies"):
             database.execute(
                 f"CREATE TABLE {table} (id VARCHAR(36) PRIMARY KEY, name VARCHAR(150) NOT NULL UNIQUE)"
@@ -100,3 +107,24 @@ def test_workflow_migration_preserves_legacy_labels_and_templates(tmp_path: Path
         )
         settings = database.execute("SELECT settings FROM report_templates").fetchone()[0]
         assert json.loads(settings) == {"content": "Keep these notes"}
+        deleted_at = database.execute("SELECT deleted_at FROM accomplishments").fetchone()[0]
+        assert datetime.fromisoformat(deleted_at).replace(tzinfo=UTC) > datetime.now(
+            UTC
+        ) - timedelta(minutes=1)
+        assert (
+            database.execute("SELECT accomplishment_id FROM report_items").fetchone()[0]
+            == "deleted"
+        )
+        assert not database.execute("PRAGMA foreign_key_check").fetchall()
+    again = subprocess.run(
+        [sys.executable, "-m", "app.migrate"],
+        cwd=root,
+        env=_migration_environment(data_dir),
+        capture_output=True,
+        text=True,
+    )
+    assert again.returncode == 0, again.stderr
+    with sqlite3.connect(data_dir / "data" / "careerforge.sqlite3") as database:
+        assert (
+            database.execute("SELECT deleted_at FROM accomplishments").fetchone()[0] == deleted_at
+        )

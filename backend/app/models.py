@@ -186,7 +186,9 @@ class ReportItem(Base):
     __tablename__ = "report_items"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     report_id: Mapped[str] = mapped_column(ForeignKey("reports.id"), index=True)
-    accomplishment_id: Mapped[str] = mapped_column(ForeignKey("accomplishments.id"), index=True)
+    accomplishment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("accomplishments.id"), index=True, nullable=True
+    )
     position: Mapped[int] = mapped_column(Integer)
     source_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
@@ -280,3 +282,10 @@ class ImportRun(Base):
     status: Mapped[str] = mapped_column(String(30))
     imported_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PendingFileDeletion(Base):
+    __tablename__ = "pending_file_deletions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    stored_path: Mapped[str] = mapped_column(Text)
+    last_error: Mapped[str] = mapped_column(Text, default="")

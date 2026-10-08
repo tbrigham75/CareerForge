@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
+import math
 import re
 import secrets
 import subprocess
 from collections import defaultdict
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
@@ -20,7 +24,7 @@ from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import get_settings
-from app.db import get_session
+from app.db import SessionLocal, get_session
 from app.models import (
     Accomplishment,
     AIDraft,
@@ -31,6 +35,7 @@ from app.models import (
     ExportRun,
     GitRepositoryProfile,
     ImportRun,
+    PendingFileDeletion,
     Project,
     Report,
     ReportItem,
@@ -46,7 +51,7 @@ from app.security import (
     require_csrf,
     verify_password,
 )
-from app.services import accomplishments, git_ops, native_picker, taxonomy
+from app.services import accomplishments, git_ops, native_picker, taxonomy, trash
 from app.services.ai import (
     ProviderSafetyError,
     classify_and_validate_url,
@@ -61,7 +66,35 @@ from app.services.reports import generate_docx, regenerate_docx
 
 settings = get_settings()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-app = FastAPI(title="CareerForge", docs_url=None, redoc_url=None)
+
+
+def run_trash_maintenance() -> None:
+    try:
+        with SessionLocal() as session:
+            trash.maintenance(session)
+    except Exception:
+        logging.getLogger(__name__).exception("Trash maintenance failed; will retry next hour")
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    stopped = asyncio.Event()
+
+    async def maintain():
+        while not stopped.is_set():
+            await asyncio.to_thread(run_trash_maintenance)
+            with suppress(TimeoutError):
+                await asyncio.wait_for(stopped.wait(), timeout=3600)
+
+    task = asyncio.create_task(maintain())
+    try:
+        yield
+    finally:
+        stopped.set()
+        await task
+
+
+app = FastAPI(title="CareerForge", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.encryption_key or secrets.token_urlsafe(32),
@@ -796,6 +829,106 @@ def projects_page(request: Request, session: SessionDependency, _: User = Depend
     return templates.TemplateResponse("projects.html", context(request, projects=projects))
 
 
+@app.get("/trash")
+def trash_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
+    records = list(
+        session.scalars(
+            select(Accomplishment)
+            .where(Accomplishment.deleted_at.is_not(None))
+            .order_by(Accomplishment.deleted_at.desc())
+        )
+    )
+    now = datetime.now(UTC)
+    items = []
+    for record in records:
+        assert record.deleted_at is not None
+        expires = record.deleted_at.replace(tzinfo=UTC) + timedelta(days=trash.RETENTION_DAYS)
+        items.append(
+            {
+                "record": record,
+                "expires": expires,
+                "days": max(0, math.ceil((expires - now).total_seconds() / 86400)),
+            }
+        )
+    pending = list(session.scalars(select(PendingFileDeletion)))
+    messages = {
+        "restored": "Accomplishment restored to its previous active or archived state.",
+        "deleted": "Permanent deletion completed. Any pending file cleanup is shown below.",
+        "cleaned": "Cleanup retried. Remaining issues are shown below.",
+    }
+    return templates.TemplateResponse(
+        "trash.html",
+        context(
+            request,
+            items=items,
+            pending=pending,
+            message=messages.get(request.query_params.get("result", "")),
+        ),
+    )
+
+
+@app.post("/trash/cleanup")
+def retry_trash_cleanup(
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    with trash.lock:
+        trash.cleanup_files(session)
+    return redirect("/trash?result=cleaned")
+
+
+@app.post("/trash/empty")
+def empty_trash(
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    confirmation: Annotated[str, Form()] = "",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    if confirmation != "EMPTY TRASH":
+        raise HTTPException(400, "Type EMPTY TRASH to confirm permanent deletion.")
+    with trash.lock:
+        trash.purge(
+            session,
+            list(
+                session.scalars(
+                    select(Accomplishment).where(Accomplishment.deleted_at.is_not(None))
+                )
+            ),
+        )
+    return redirect("/trash?result=deleted")
+
+
+@app.post("/trash/{record_id}/{action}")
+def change_trash(
+    record_id: str,
+    action: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    confirmation: Annotated[str, Form()] = "",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    with trash.lock:
+        record = session.get(Accomplishment, record_id)
+        if not record or record.deleted_at is None:
+            raise HTTPException(404, "This item is no longer in Trash.")
+        if action == "restore":
+            trash.restore(session, record)
+            return redirect("/trash?result=restored")
+        if action != "delete":
+            raise HTTPException(404, "Unknown Trash action.")
+        if confirmation != "DELETE":
+            raise HTTPException(400, "Type DELETE to confirm permanent deletion.")
+        trash.purge(session, [record])
+    return redirect("/trash?result=deleted")
+
+
 TAXONOMY_MODELS = taxonomy.GROUPS
 
 
@@ -989,6 +1122,8 @@ def download_attachment(
     _: User = Depends(current_user),
 ):
     metadata = session.get(AttachmentMetadata, attachment_id)
+    if metadata and metadata.accomplishment_id:
+        get_record(session, metadata.accomplishment_id)
     stored = Path(metadata.stored_path) if metadata else None
     attachment_root = (settings.data_dir / "attachments").resolve()
     if (
