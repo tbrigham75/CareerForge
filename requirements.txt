@@ -12,3 +12,4 @@ python-multipart==0.0.20
 SQLAlchemy==2.0.41
 uvicorn[standard]==0.34.3
 tzdata==2026.5
+XlsxWriter==3.2.9

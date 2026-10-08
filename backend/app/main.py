@@ -16,10 +16,11 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 from typing import Annotated
+from urllib.parse import quote
 from zoneinfo import available_timezones
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -59,6 +60,7 @@ from app.security import (
 from app.services import (
     accomplishments,
     database_maintenance,
+    document_exports,
     git_ops,
     native_picker,
     reporting_year,
@@ -2020,11 +2022,119 @@ def download_report(
 
 
 @app.get("/exports")
+def document_exports_page(
+    request: Request,
+    session: SessionDependency,
+    _: User = Depends(current_user),
+    scope: str = "current",
+    project_id: str = "",
+    include_archived: bool = False,
+    include_unfinished: bool = False,
+    q: str = "",
+):
+    try:
+        records = document_exports.candidates(
+            session, scope, project_id, include_archived, include_unfinished, q
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    preference = reporting_year.preferences(session)
+    periods = {
+        reporting_year.period_for(record.date_completed, preference)
+        for record in accomplishments.search(session, include_archived=True)
+        if record.date_completed and 1 < record.date_completed.year < 9999
+    }
+    return templates.TemplateResponse(
+        "exports.html",
+        context(
+            request,
+            records=records,
+            scope=scope,
+            project_id=project_id,
+            include_archived=include_archived,
+            include_unfinished=include_unfinished,
+            query=q,
+            periods=sorted(periods, key=lambda period: period.start, reverse=True),
+            projects=list(session.scalars(select(Project).order_by(Project.name))),
+        ),
+    )
+
+
+@app.post("/exports/download")
+def download_accomplishments(
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    format: Annotated[str, Form()],
+    title: Annotated[str, Form()] = "Accomplishment Brag Sheet",
+    record_ids: Annotated[list[str] | None, Form()] = None,
+    scope: Annotated[str, Form()] = "current",
+    project_id: Annotated[str, Form()] = "",
+    include_archived: Annotated[bool, Form()] = False,
+    include_unfinished: Annotated[bool, Form()] = False,
+    include_notes: Annotated[bool, Form()] = False,
+    reviewed: Annotated[bool, Form()] = False,
+    q: Annotated[str, Form()] = "",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    if format not in document_exports.MIME_TYPES:
+        raise HTTPException(400, "Choose Word, ODT, or Excel.")
+    if not reviewed:
+        raise HTTPException(
+            400, "Confirm you reviewed the selected records and sensitivity before downloading."
+        )
+    if not title.strip() or len(title) > 200:
+        raise HTTPException(400, "Provide a document title of 1–200 characters.")
+    selected = set(record_ids or [])
+    if not selected:
+        raise HTTPException(400, "Select at least one accomplishment.")
+    try:
+        allowed = document_exports.candidates(
+            session, scope, project_id, include_archived, include_unfinished, q
+        )
+        if not selected.issubset({record.id for record in allowed}):
+            raise ValueError(
+                "Some selected records are no longer in this export scope. Refresh Exports and select again."
+            )
+        content = document_exports.generate(
+            [record for record in allowed if record.id in selected],
+            title.strip(),
+            format,
+            include_notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    session.add(
+        AuditEvent(
+            event_type="document.exported",
+            metadata_json={
+                "format": format,
+                "record_ids": sorted(selected),
+                "include_notes": include_notes,
+            },
+        )
+    )
+    session.commit()
+    filename = (
+        (re.sub(r"[^\w .'-]", "", title).strip(" .")[:100] or "accomplishments") + "." + format
+    )
+    return Response(
+        content,
+        media_type=document_exports.MIME_TYPES[format],
+        headers={
+            "Content-Disposition": "attachment; filename*=UTF-8''" + quote(filename, safe=""),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.get("/git-sync")
 def exports_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
     profiles = list(
         session.scalars(select(GitRepositoryProfile).order_by(GitRepositoryProfile.name))
     )
-    return templates.TemplateResponse("exports.html", context(request, profiles=profiles))
+    return templates.TemplateResponse("git_sync.html", context(request, profiles=profiles))
 
 
 def latest_export_files(session: Session, profile_id: str) -> list[str]:
@@ -2039,6 +2149,7 @@ def latest_export_files(session: Session, profile_id: str) -> list[str]:
 
 
 @app.post("/exports/profiles")
+@app.post("/git-sync/profiles")
 def create_export_profile(
     request: Request,
     session: SessionDependency,
@@ -2083,10 +2194,11 @@ def create_export_profile(
         AuditEvent(event_type="git_profile.created", metadata_json={"profile_id": profile.id})
     )
     session.commit()
-    return redirect("/exports")
+    return redirect("/git-sync")
 
 
 @app.get("/exports/{profile_id}/preview")
+@app.get("/git-sync/{profile_id}/preview")
 def export_preview(
     profile_id: str, request: Request, session: SessionDependency, _: User = Depends(current_user)
 ):
@@ -2098,7 +2210,7 @@ def export_preview(
         repo_diff = git_ops.diff(Path(profile.repository_path))
     except git_ops.GitOperationError as exc:
         return templates.TemplateResponse(
-            "exports.html",
+            "git_sync.html",
             context(
                 request,
                 profiles=list(session.scalars(select(GitRepositoryProfile))),
@@ -2110,7 +2222,7 @@ def export_preview(
         session, Path(profile.repository_path) / profile.export_subdirectory, dry_run=True
     )
     return templates.TemplateResponse(
-        "exports.html",
+        "git_sync.html",
         context(
             request,
             profiles=list(session.scalars(select(GitRepositoryProfile))),
@@ -2124,6 +2236,7 @@ def export_preview(
 
 
 @app.post("/exports/dry-run")
+@app.post("/git-sync/dry-run")
 def export_dry_run(
     request: Request,
     session: SessionDependency,
@@ -2133,7 +2246,7 @@ def export_dry_run(
     require_csrf(request, csrf)
     manifest = export_markdown(session, settings.data_dir / "temp" / "dry-run", dry_run=True)
     return templates.TemplateResponse(
-        "exports.html",
+        "git_sync.html",
         context(
             request,
             profiles=list(session.scalars(select(GitRepositoryProfile))),
@@ -2143,6 +2256,7 @@ def export_dry_run(
 
 
 @app.post("/exports/{profile_id}/apply")
+@app.post("/git-sync/{profile_id}/apply")
 def apply_export(
     profile_id: str,
     request: Request,
@@ -2176,7 +2290,7 @@ def apply_export(
     )
     session.commit()
     return templates.TemplateResponse(
-        "exports.html",
+        "git_sync.html",
         context(
             request,
             profiles=list(session.scalars(select(GitRepositoryProfile))),
@@ -2189,6 +2303,7 @@ def apply_export(
 
 
 @app.post("/exports/{profile_id}/commit")
+@app.post("/git-sync/{profile_id}/commit")
 def commit_export(
     profile_id: str,
     request: Request,
@@ -2227,10 +2342,11 @@ def commit_export(
         )
     )
     session.commit()
-    return redirect(f"/exports/{profile.id}/preview")
+    return redirect(f"/git-sync/{profile.id}/preview")
 
 
 @app.post("/exports/{profile_id}/push")
+@app.post("/git-sync/{profile_id}/push")
 def push_export(
     profile_id: str,
     request: Request,
@@ -2265,7 +2381,7 @@ def push_export(
         )
     )
     session.commit()
-    return redirect(f"/exports/{profile.id}/preview")
+    return redirect(f"/git-sync/{profile.id}/preview")
 
 
 @app.get("/audit")

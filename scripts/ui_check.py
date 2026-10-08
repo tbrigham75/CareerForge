@@ -142,7 +142,7 @@ try:
         (fixture_repo / "exports").mkdir()
         fixture_source = fixture_repo / "Example.ODT"
         fixture_source.write_bytes(b"read-only picker fixture")
-        page.goto(base + "/exports")
+        page.goto(base + "/git-sync")
         page.locator('[data-browse="subdirectory"]').click()
         expect(page.locator("dialog [data-status]")).to_contain_text("Choose or enter a repository")
         page.keyboard.press("Escape")
@@ -162,7 +162,7 @@ try:
         expect(page.locator("#browser-location")).to_have_value(str(fixture_repo / "exports"))
         page.locator("dialog [data-select]").click()
         expect(page.get_by_label("Export subdirectory", exact=True)).to_have_value("exports")
-        assert page.url == base + "/exports"
+        assert page.url == base + "/git-sync"
         page.goto(base + "/imports")
         page.get_by_role("button", name="Edit path (advanced)", exact=True).click()
         page.get_by_label("Local ODT source path").fill(str(fixture_repo))
@@ -202,7 +202,7 @@ try:
             )
 
         page.route("**/files/pick-native", native_selection)
-        page.goto(base + "/exports")
+        page.goto(base + "/git-sync")
         page.locator('[data-browse="repository"]').click()
         expect(page.get_by_label("Repository path", exact=True)).to_have_value(
             str(fixture_repo.resolve())
@@ -592,6 +592,27 @@ try:
         results["interactions"].append(
             "Fiscal settings preview/persistence and editable historical accomplishment browsing"
         )
+        page.goto(base + "/exports?scope=all")
+        page.get_by_label("Document title", exact=True).fill("Test Brag Sheet")
+        page.locator('[name="reviewed"]').check()
+        for export_format in ["docx", "odt", "xlsx"]:
+            page.get_by_label("File format", exact=True).select_option(export_format)
+            with page.expect_download() as download_info:
+                page.get_by_role(
+                    "button", name="Download selected accomplishments", exact=True
+                ).click()
+            download = download_info.value
+            assert download.suggested_filename == f"Test Brag Sheet.{export_format}"
+            download.save_as(ARTIFACTS / f"brag-sheet.{export_format}")
+        page.get_by_role("button", name="Deselect all", exact=True).click()
+        page.get_by_role("button", name="Download selected accomplishments", exact=True).click()
+        expect(page.locator("#export-count")).to_have_text("Select at least one accomplishment.")
+        page.get_by_role("button", name="Select all", exact=True).click()
+        no_overflow(page)
+        page.screenshot(path=str(ARTIFACTS / "exports-mobile.png"), full_page=True)
+        results["interactions"].append(
+            "Word, ODT and Excel downloads; export selection validation; separate Git Sync"
+        )
         routes = [
             "/dashboard",
             "/capture",
@@ -600,6 +621,7 @@ try:
             "/taxonomy",
             "/reports",
             "/exports",
+            "/git-sync",
             "/imports",
             "/operations",
             "/providers",

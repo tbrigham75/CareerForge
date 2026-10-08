@@ -8,7 +8,7 @@
 {% if user_id %}<aside class="sidebar">
 <a class="brand" href="/dashboard"><span class="brand-mark" aria-hidden="true">CF</span><span>CareerForge<small>Your work, remembered.</small></span></a>
 <button type="button" class="secondary nav-toggle" aria-expanded="false" aria-controls="workspace-nav">Menu</button><nav id="workspace-nav" class="navigation" aria-label="Main navigation">
-{% set groups = [('Workspace', [('/dashboard', 'Overview'), ('/capture', 'I Did This'), ('/accomplishments', 'Accomplishments'), ('/history', 'History'), ('/projects', 'Projects'), ('/taxonomy', 'Taxonomy'), ('/imports', 'Imports')]), ('Share your progress', [('/reports', 'Reports'), ('/exports', 'Exports / Git Sync')])] %}
+{% set groups = [('Workspace', [('/dashboard', 'Overview'), ('/capture', 'I Did This'), ('/accomplishments', 'Accomplishments'), ('/history', 'History'), ('/projects', 'Projects'), ('/taxonomy', 'Taxonomy'), ('/imports', 'Imports')]), ('Share your progress', [('/reports', 'Reports'), ('/exports', 'Exports'), ('/git-sync', 'Git Sync')])] %}
 {% for heading, links in groups %}<p class="nav-heading">{{ heading }}</p>{% for url, label in links %}<a href="{{ url }}" {% if request.url.path == url or request.url.path.startswith(url + '/') %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}{% endfor %}
 </nav>
 <div class="sidebar-footer"><button type="button" class="secondary settings-trigger" aria-haspopup="dialog" aria-controls="settings-dialog">Settings</button><form class="inline" action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="secondary">Log out</button></form></div>
