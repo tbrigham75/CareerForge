@@ -174,6 +174,12 @@ def test_capture_with_supporting_document(logged_in):
     from app.db import SessionLocal
     from app.models import AttachmentMetadata
 
+    with SessionLocal() as session:
+        project = Project(name="Evidence review")
+        session.add(project)
+        session.commit()
+        project_id = project.id
+
     for choice in ("raw", "completed"):
         response = logged_in.post(
             "/capture",
@@ -183,6 +189,7 @@ def test_capture_with_supporting_document(logged_in):
                 "supporting_narrative": "See the assessment.",
                 "sensitivity": "confidential",
                 "action_choice": choice,
+                "project_id": project_id,
             },
             files={"attachment": ("../assessment.txt", b"24 settings reviewed", "text/plain")},
             follow_redirects=False,

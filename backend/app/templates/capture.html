@@ -6,8 +6,9 @@
 <div class="wide"><h2>Start with the facts</h2><label>What did you do?<textarea name="raw_note" placeholder="Example: I patched four Linux servers affected by a critical vulnerability and verified the services afterward.">{{ record.raw_note if record else '' }}</textarea></label>
 <div class="ai-assistance">{% if providers %}<label>AI provider<select name="provider_id">{% for provider in providers %}<option value="{{ provider.id }}">{{ provider.display_name }} — {{ provider.default_model or 'Set a default model' }}</option>{% endfor %}</select></label><button type="button" id="assist-capture">Help me fill this out</button><p class="muted">Suggests a title, context, Action, Metric and Impact from your note. Review before saving. Missing facts are flagged, never invented.</p>{% else %}<p class="notice">To get AI help filling out this form, set up an AI provider first. <a href="/providers" target="_blank" rel="noopener">Set up AI Provider (opens a new tab)</a>. Return here and reload after setup; save your raw note first if you have started writing.</p>{% endif %}<p id="assist-status" role="status"></p><div id="assist-results"></div></div></div>
 <label>Title<input name="title" value="{{ record.title if record else '' }}"></label>
-<label>Project<select name="project_id"><option value="">No project</option>{% for project in projects %}<option value="{{ project.id }}">{{ project.name }}</option>{% endfor %}</select></label>
-<label>Start date<input id="date_started" type="date" name="date_started"></label><label>Completion date<input id="date_completed" type="date" name="date_completed"></label>
+<div class="capture-review-field" data-review-field="project_id"><label for="capture-project">Project</label><select id="capture-project" name="project_id" aria-describedby="project-help"><option value="">Select a project</option>{% for project in projects %}<option value="{{ project.id }}">{{ project.name }}</option>{% endfor %}</select><p id="project-help" class="muted field-help">Required for completed accomplishments; optional for raw notes. <a href="/projects" target="_blank" rel="noopener">Manage projects (new tab)</a></p><button type="button" class="secondary" id="refresh-capture-projects">Refresh projects</button><p id="capture-project-status" role="status"></p></div>
+<div class="capture-review-field" data-review-field="date_started"><label for="date_started">Start date</label><input id="date_started" type="date" name="date_started" value="{{ today }}"><span class="capture-review-hint" hidden>Review this date</span></div><div class="capture-review-field" data-review-field="date_completed"><label for="date_completed">Completion date</label><input id="date_completed" type="date" name="date_completed" value="{{ today }}"><span class="capture-review-hint" hidden>Review this date</span></div>
+<div class="wide notice" id="capture-context-reminder" role="status" hidden><strong>Before saving: review your project and dates.</strong><p>AI does not choose your project or verify when the work happened. Dates start at today; change them if needed.</p><button type="button" class="secondary" id="confirm-capture-context">Project and dates look correct</button><p id="capture-context-feedback"></p></div>
 <div class="wide form-section"><h2>Context &amp; organization</h2><p class="muted">Add the details that will help you find this work later.</p></div><label>Sensitivity<select name="sensitivity"><option value="private_personal">Private personal</option><option value="public_safe">Public safe</option><option value="internal">Internal</option><option value="confidential">Confidential</option><option value="do_not_sync">Do not sync</option></select></label>
 <label>Systems / services (comma-separated)<input name="systems"></label><label>Technologies (comma-separated)<input name="technologies"></label><label>Tags (comma-separated)<input name="tags"></label><label>Categories (comma-separated)<input name="categories"></label>
 <div class="wide form-section"><h2>Shape the accomplishment</h2><p class="muted">Optional for a raw note. Describe what you did, the measurable result, and why it mattered.</p></div><label class="wide">Action<textarea name="action"></textarea></label><label>Metric<textarea name="metric"></textarea></label><label>Impact<textarea name="impact"></textarea></label><label class="wide">Supporting evidence / notes<textarea name="supporting_narrative"></textarea></label><label><input type="checkbox" name="github_export" value="true"> Eligible for Markdown export after approval</label></div>
@@ -35,6 +36,12 @@
   document.querySelector('#clear-supporting-document').addEventListener('click', () => { documentInput.value = ''; checkDocument(); documentInput.focus(); });
   const startDate = document.querySelector("#date_started");
   const completionDate = document.querySelector("#date_completed");
+  // Use the browser's local calendar day; never overwrite restored user input.
+  const localNow = new Date();
+  const localToday = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
+  for (const input of [startDate, completionDate]) {
+    if (!Object.prototype.hasOwnProperty.call(restoredValues, input.name)) input.value = localToday;
+  }
 
   function syncDateBounds() {
     completionDate.min = startDate.value;
@@ -45,6 +52,7 @@
   completionDate.addEventListener("change", syncDateBounds);
   syncDateBounds();
 </script>
-<script src="/static/capture-assist.js?v=6" defer></script>
+<script src="/static/capture-context.js?v=1" defer></script>
+<script src="/static/capture-assist.js?v=7" defer></script>
 <script src="/static/taxonomy-suggestions.js?v=1" defer></script>
 {% endblock %}

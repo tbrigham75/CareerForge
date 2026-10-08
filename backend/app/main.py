@@ -80,6 +80,7 @@ def context(request: Request, **values: object) -> dict[str, object]:
         "csrf_token": csrf_token(request),
         "user_id": request.session.get("user_id"),
         "max_attachment_bytes": settings.max_attachment_bytes,
+        "today": date.today().isoformat(),
         **values,
     }
 
@@ -523,6 +524,13 @@ async def capture(
     status = "raw_note" if action_choice == "raw" else "completed"
     approval = "draft" if action_choice == "raw" else "approved"
     try:
+        project = session.get(Project, project_id) if project_id else None
+        if project_id and project is None:
+            raise ValueError("The selected project no longer exists. Choose another project.")
+        if status == "completed" and project is None:
+            raise ValueError(
+                "Select a project before saving a completed accomplishment. You can save a raw note without a project."
+            )
         data = form_to_accomplishment(
             title,
             raw_note,
@@ -578,6 +586,14 @@ async def capture(
     record = accomplishments.create(session, data, commit=False)
     stored = None
     try:
+        if project:
+            record.projects.append(project)
+            session.add(
+                AuditEvent(
+                    event_type="accomplishment.project_linked",
+                    metadata_json={"record_id": record.id, "project_id": project.id},
+                )
+            )
         if content is not None and attachment:
             stored = store_attachment(
                 session, record, attachment.filename or "attachment", content, sensitivity
@@ -588,20 +604,19 @@ async def capture(
         if stored:
             stored.unlink(missing_ok=True)
         raise
-    if project_id:
-        project = session.get(Project, project_id)
-        if project:
-            record.projects.append(project)
-            session.add(
-                AuditEvent(
-                    event_type="accomplishment.project_linked",
-                    metadata_json={"record_id": record.id, "project_id": project.id},
-                )
-            )
-            session.commit()
     if action_choice == "draft" and provider_id:
         return redirect(f"/ai/draft/{record.id}?provider_id={provider_id}")
     return redirect(f"/accomplishments/{record.id}")
+
+
+@app.get("/capture/projects")
+def capture_project_options(session: SessionDependency, _: User = Depends(current_user)):
+    return {
+        "projects": [
+            {"id": item.id, "name": item.name}
+            for item in session.scalars(select(Project).order_by(Project.name))
+        ]
+    }
 
 
 @app.get("/accomplishments")

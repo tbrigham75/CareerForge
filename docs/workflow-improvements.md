@@ -6,6 +6,13 @@ case folding. Removing a label from an accomplishment leaves the reusable entry 
 Direct Taxonomy additions never change accomplishments. Sensitivity remains a controlled
 privacy setting, not a taxonomy group. Capture and edit forms suggest existing labels.
 
+On I Did This, a project is required when saving a completed accomplishment; raw notes
+may omit it. Start and completion dates initialize to the browser's local calendar day
+and remain editable. Failed-save values and user-edited dates are not reset. After AI
+assistance, a steady highlighted reminder asks the user to review the project and dates;
+an optional acknowledgment clears the highlighting without changing those values.
+Projects can be created in a separate tab and refreshed without discarding the draft.
+
 The Backups screen retains `/operations` and `/operations/backup` for compatibility.
 
 Appearance, AI Providers, Backups, and Audit Log are grouped in the **Settings** dialog

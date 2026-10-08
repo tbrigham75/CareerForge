@@ -161,6 +161,11 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .path-control input { flex: 1 1 180px; min-width: 0; margin: 0; }
 .path-control button { flex: 0 0 auto; margin: 0; }
 .field-help { font-size: 12px; }
+.capture-review-field { border: 2px solid transparent; border-radius: var(--radius-sm); padding: 10px; min-width: 0; }
+.capture-review-field.needs-review { border-color: var(--warning); background: var(--warning-bg); }
+.capture-review-field.needs-review > label, .capture-review-hint { color: var(--warning); font-weight: 650; }
+.capture-review-hint { display: block; font-size: 12px; }
+#capture-context-reminder { border-inline-start: 4px solid var(--warning); }
 .file-browser { width: min(700px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--ink); box-shadow: var(--shadow-raised); }
 .file-browser::backdrop { background: #0009; }
 .file-browser [hidden] { display: none !important; }

@@ -236,6 +236,13 @@ try:
         page.get_by_role("button", name="Save provider", exact=True).click()
         page.goto(base + "/capture")
         page.get_by_label("What did you do?").fill("Patched four Linux servers.")
+        local_today = page.evaluate(
+            "() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }"
+        )
+        expect(page.get_by_label("Start date", exact=True)).to_have_value(local_today)
+        expect(page.get_by_label("Completion date", exact=True)).to_have_value(local_today)
+        page.get_by_label("Start date", exact=True).fill("2026-10-01")
+        page.get_by_label("Completion date", exact=True).fill("2026-10-05")
         page.get_by_label("Title", exact=True).fill("My own title")
         page.route(
             "**/capture/assist",
@@ -262,6 +269,10 @@ try:
         )
         page.get_by_role("button", name="Help me fill this out", exact=True).click()
         expect(page.get_by_label("Action", exact=True)).to_have_value("Patched four Linux servers.")
+        expect(page.locator("#capture-context-reminder")).to_be_visible()
+        expect(page.locator(".capture-review-field.needs-review")).to_have_count(3)
+        expect(page.get_by_label("Start date", exact=True)).to_have_value("2026-10-01")
+        expect(page.get_by_label("Completion date", exact=True)).to_have_value("2026-10-05")
         expect(page.get_by_label("Metric", exact=True)).to_have_value("Four servers")
         expect(page.get_by_label("Impact", exact=True)).to_have_value("[Confirm outcome]")
         expect(page.get_by_label("Title", exact=True)).to_have_value("My own title")
@@ -384,6 +395,26 @@ try:
             {"name": "assessment.txt", "mimeType": "text/plain", "buffer": b"Reviewed 24 settings."}
         )
         page.get_by_role("button", name="Save Completed Accomplishment").click()
+        expect(page.get_by_label("Project", exact=True)).to_have_attribute("aria-invalid", "true")
+        assert page.url == base + "/capture"
+        project_page = context.new_page()
+        project_page.goto(base + "/projects")
+        project_page.get_by_label("Project name").fill("Service reliability")
+        project_page.get_by_label("Description", exact=True).fill(
+            "Make routine work more dependable."
+        )
+        project_page.get_by_role("button", name="Create project").click()
+        expect(
+            project_page.get_by_role("cell", name="Service reliability", exact=True)
+        ).to_be_visible()
+        project_page.close()
+        page.get_by_role("button", name="Refresh projects", exact=True).click()
+        expect(page.locator("#capture-project-status")).to_contain_text("Projects refreshed")
+        page.get_by_label("Project", exact=True).select_option(label="Service reliability")
+        page.get_by_role("button", name="Project and dates look correct", exact=True).click()
+        expect(page.locator(".capture-review-field.needs-review")).to_have_count(0)
+        expect(page.get_by_label("Start date", exact=True)).to_have_value("2026-10-01")
+        page.get_by_role("button", name="Save Completed Accomplishment", exact=True).click()
         page.wait_for_url("**/accomplishments/*")
         record_url = page.url
         with page.expect_download() as evidence_download:
@@ -395,11 +426,6 @@ try:
         results["interactions"].append(
             "Setup, login, empty dashboard, dated accomplishment creation"
         )
-        page.goto(base + "/projects")
-        page.get_by_label("Project name").fill("Service reliability")
-        page.get_by_label("Description", exact=True).fill("Make routine work more dependable.")
-        page.get_by_role("button", name="Create project").click()
-        expect(page.get_by_role("cell", name="Service reliability", exact=True)).to_be_visible()
         page.goto(base + "/reports")
         expect(page.locator('input[name="record_ids"]').first).to_be_checked()
         for starter in [

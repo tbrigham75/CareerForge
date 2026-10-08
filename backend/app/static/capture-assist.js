@@ -44,10 +44,11 @@
         return;
       }
       input.value = suggestion;
+      form.dispatchEvent(new Event('capture-ai-applied'));
       input.dispatchEvent(new Event('input', {bubbles: true}));
       lastAI.delete(field);
       appliedAnswers.set(field, value);
-      status.textContent = `AI wording was placed in ${names[field]}. No other fields changed. Please review it before saving.`;
+      status.textContent = `AI wording was placed in ${names[field]}. No other fields changed. Review this wording, your project, and your start and completion dates before saving.`;
       input.focus();
     } catch (error) { status.textContent = error.message; }
     finally {
@@ -151,7 +152,8 @@
         results.append(heading, list);
       }
       const hasQuestions = activeQuestions.length || Object.keys(draft.field_questions || {}).length;
-      status.textContent = `Your accomplishment draft is ready to review.${hasQuestions ? ' A specific question appears beside any field that needs more information; you can leave it unanswered.' : ' You can edit the fields directly or optionally add more details.'}${preserved ? ' Your edits were preserved; replacement suggestions are below.' : ''}`;
+      form.dispatchEvent(new Event('capture-ai-applied'));
+      status.textContent = `Your accomplishment draft is ready to review. Confirm your project, start date, and completion date below before saving.${hasQuestions ? ' A specific question appears beside any field that needs more information; you can leave it unanswered.' : ' You can edit the fields directly or optionally add more details.'}${preserved ? ' Your edits were preserved; replacement suggestions are below.' : ''}`;
     } catch (error) {
       status.textContent = error.message;
       const link = document.createElement('a'); link.href = '/providers'; link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Open AI Providers (new tab)'; results.append(link);

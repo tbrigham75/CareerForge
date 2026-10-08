@@ -9,10 +9,20 @@ from test_auth_and_capture import token
 
 
 def capture(client, **values):
+    from app.models import Project
+
+    with SessionLocal() as session:
+        project = session.scalar(select(Project))
+        if project is None:
+            project = Project(name="Test project")
+            session.add(project)
+            session.commit()
+        project_id = project.id
     data = {
         "csrf": token(client),
         "raw_note": "Reviewed settings",
         "action_choice": "completed",
+        "project_id": project_id,
         **values,
     }
     return client.post("/capture", data=data, follow_redirects=False)
