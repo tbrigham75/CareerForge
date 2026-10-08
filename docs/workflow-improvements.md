@@ -8,6 +8,11 @@ privacy setting, not a taxonomy group. Capture and edit forms suggest existing l
 
 The Backups screen retains `/operations` and `/operations/backup` for compatibility.
 
+Appearance, AI Providers, Backups, and Audit Log are grouped in the **Settings** dialog
+opened from the sidebar footer. Management pages include a Settings breadcrumb; their
+existing URLs still work. Opening and closing Settings does not navigate away from an
+unsaved form. Before sign-in, Settings exposes only browser-local appearance preferences.
+
 ## Filesystem boundaries
 
 For a direct localhost connection on an interactive Windows desktop, Exports and Imports

@@ -62,6 +62,15 @@ nav a[aria-current] { color: var(--accent); background: var(--accent-soft); box-
 .topbar-label { font-size: 13px; color: var(--muted); }
 .preferences { width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--ink); box-shadow: var(--shadow-raised); }
 .preferences::backdrop { background: #0008; }
+.settings-dialog { width: min(560px, calc(100vw - 32px)); }
+.settings-dialog .page-heading { flex-direction: row; align-items: center; }
+.settings-links { display: grid; gap: 8px; margin-bottom: 20px; }
+.settings-links a { border: 1px solid var(--line); margin: 0; padding: 12px 14px; color: var(--ink); }
+.settings-links a span { display: block; margin-top: 4px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.settings-appearance { border-top: 1px solid var(--line); padding-top: 16px; }
+.settings-appearance h3 { margin-top: 0; }
+.settings-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; color: var(--muted); font-size: 13px; }
+.settings-breadcrumb button { margin: 0; padding: 6px 10px; }
 summary { cursor: pointer; padding: 10px 12px; border-radius: var(--radius-sm); font-weight: 600; }
 summary:hover { background: var(--subtle); }
 .preferences > summary { border: 1px solid var(--line); font-size: 13px; white-space: nowrap; }

@@ -93,6 +93,44 @@ try:
         page.get_by_label("Password", exact=True).fill("isolated review password")
         page.get_by_role("button", name="Sign in", exact=True).click()
         page.wait_for_url("**/dashboard")
+        for label, route in [
+            ("AI Providers", "/providers"),
+            ("Backups", "/operations"),
+            ("Audit Log", "/audit"),
+        ]:
+            expect(
+                page.locator("#workspace-nav").get_by_role("link", name=label, exact=True)
+            ).to_have_count(0)
+            page.get_by_role("button", name="Settings", exact=True).click()
+            settings_dialog = page.get_by_role("dialog", name="Settings", exact=True)
+            expect(
+                settings_dialog.get_by_role("heading", name="Appearance", exact=True)
+            ).to_be_visible()
+            settings_dialog.get_by_role("link", name=label, exact=True).click()
+            page.wait_for_url("**" + route)
+            page.get_by_role("navigation", name="Breadcrumb", exact=True).get_by_role(
+                "button", name="Settings", exact=True
+            ).click()
+            expect(settings_dialog.get_by_role("link", name=label, exact=True)).to_have_attribute(
+                "aria-current", "page"
+            )
+            page.keyboard.press("Escape")
+            expect(
+                page.get_by_role("navigation", name="Breadcrumb", exact=True).get_by_role(
+                    "button", name="Settings", exact=True
+                )
+            ).to_be_focused()
+            page.goto(base + "/dashboard")
+        page.goto(base + "/capture")
+        page.get_by_label("What did you do?").fill(
+            "Unsaved note stays here while adjusting settings."
+        )
+        page.get_by_role("button", name="Settings", exact=True).click()
+        page.get_by_role("button", name="Done", exact=True).click()
+        expect(page.get_by_label("What did you do?")).to_have_value(
+            "Unsaved note stays here while adjusting settings."
+        )
+        page.goto(base + "/dashboard")
         # Exercise the server fallback without opening OS windows in headless tests.
         page.route(
             "**/files/picker-capabilities", lambda route: route.fulfill(json={"native": False})
@@ -481,7 +519,7 @@ try:
         page.goto(base + "/dashboard")
         for theme in ["slate", "ocean", "emerald", "violet", "amber", "rose"]:
             for mode in ["light", "dark"]:
-                page.get_by_role("button", name="Appearance settings", exact=True).click()
+                page.get_by_role("button", name="Settings", exact=True).click()
                 page.get_by_label("Color theme").select_option(theme)
                 page.get_by_role("combobox", name="Appearance", exact=True).select_option(mode)
                 page.reload()
@@ -505,7 +543,7 @@ try:
                     assert page.goto(base + route).status == 200
                     no_overflow(page)
                 page.goto(base + "/dashboard")
-        page.get_by_role("button", name="Appearance settings", exact=True).click()
+        page.get_by_role("button", name="Settings", exact=True).click()
         page.get_by_role("combobox", name="Appearance", exact=True).select_option("system")
         for mode in ["light", "dark"]:
             page.emulate_media(color_scheme=mode)
@@ -524,6 +562,11 @@ try:
         assert page.locator('[aria-invalid="true"]').count() > 0
         page.set_viewport_size({"width": 390, "height": 844})
         page.goto(base + "/capture")
+        page.get_by_role("button", name="Settings", exact=True).click()
+        expect(page.get_by_role("dialog", name="Settings", exact=True)).to_be_visible()
+        no_overflow(page)
+        page.screenshot(path=str(ARTIFACTS / "settings-mobile.png"), full_page=True)
+        page.keyboard.press("Escape")
         page.screenshot(path=str(ARTIFACTS / "capture-mobile.png"), full_page=True)
         expect(page.locator(".navigation")).not_to_be_visible()
         page.get_by_role("button", name="Menu", exact=True).click()
@@ -531,9 +574,7 @@ try:
         page.set_viewport_size({"width": 1366, "height": 768})
         page.goto(base + "/dashboard")
         expect(page.get_by_role("link", name="Overview", exact=True)).to_be_visible()
-        expect(
-            page.get_by_role("button", name="Appearance settings", exact=True)
-        ).to_be_in_viewport()
+        expect(page.get_by_role("button", name="Settings", exact=True)).to_be_in_viewport()
         expect(page.get_by_role("button", name="Log out", exact=True)).to_be_in_viewport()
         page.screenshot(path=str(ARTIFACTS / "navigation-laptop.png"), full_page=True)
         page.goto(base + "/dashboard")

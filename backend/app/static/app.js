@@ -24,9 +24,9 @@
   });
   mobile.addEventListener('change', resizeNavigation);
   resizeNavigation();
-  const appearanceDialog = document.querySelector('.preferences');
-  document.querySelectorAll('.appearance-trigger').forEach(button => button.addEventListener('click', () => appearanceDialog.showModal()));
-  document.querySelector('[data-close-appearance]').addEventListener('click', () => appearanceDialog.close());
+  const settingsDialog = document.querySelector('#settings-dialog');
+  document.querySelectorAll('.settings-trigger').forEach(button => button.addEventListener('click', () => settingsDialog.showModal()));
+  document.querySelector('[data-close-settings]').addEventListener('click', () => settingsDialog.close());
   const heading = document.querySelector('main h1');
   if (heading) document.title = `${heading.textContent.trim()} · CareerForge`;
   document.querySelectorAll('main table').forEach(table => {
