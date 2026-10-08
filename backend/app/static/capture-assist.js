@@ -67,11 +67,13 @@
         label.append(input); section.append(heading, label, update);
         form.elements[field].closest('label').after(section);
       }
-      const followUps = document.createElement('section'); followUps.className = 'panel';
-      const title = document.createElement('h3'); title.textContent = 'Refine with your answers';
-      const help = document.createElement('p'); help.textContent = 'Optional: answer what you know, or say “unknown.” Add corrections below. Updating refreshes untouched AI fields; your edits stay yours. Answers are used for this draft and are not saved separately.';
+      const activeQuestions = (draft.questions || []).slice(0, 3);
+      const followUps = document.createElement('details'); followUps.className = 'panel';
+      followUps.open = activeQuestions.length > 0;
+      const title = document.createElement('summary'); title.textContent = activeQuestions.length ? 'A detail that would help' : 'Add details or corrections (optional)';
+      const help = document.createElement('p'); help.textContent = 'Add facts you want included, then update the suggestions. Your original note and manual edits are preserved.';
       followUps.append(title, help);
-      const questions = [...new Set([...answers.keys(), ...(draft.questions || []).slice(0, 3), 'Additional facts or corrections'])];
+      const questions = [...new Set([...answers.keys(), ...activeQuestions, 'Additional facts or corrections'])];
       for (const question of questions) {
         const label = document.createElement('label'); label.textContent = question;
         const input = document.createElement('textarea'); input.dataset.question = question; input.value = answers.get(question) || ''; input.maxLength = 20000;
@@ -86,7 +88,8 @@
         draft[group].forEach(item => { const li = document.createElement('li'); li.textContent = item; list.append(li); });
         results.append(heading, list);
       }
-      status.textContent = `AI suggestions updated. Answer any follow-up questions below and click Update suggestions with my answers, or edit the fields directly. Review claims and unresolved placeholders before saving.${preserved ? ' Your edits were preserved; replacement suggestions are below.' : ''}`;
+      const hasQuestions = activeQuestions.length || Object.keys(draft.field_questions || {}).length;
+      status.textContent = `Your accomplishment draft is ready to review.${hasQuestions ? ' A specific question appears beside any field that needs more information; you can leave it unanswered.' : ' You can edit the fields directly or optionally add more details.'}${preserved ? ' Your edits were preserved; replacement suggestions are below.' : ''}`;
     } catch (error) {
       status.textContent = error.message;
       const link = document.createElement('a'); link.href = '/providers'; link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Open AI Providers (new tab)'; results.append(link);
