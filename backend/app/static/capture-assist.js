@@ -7,6 +7,23 @@
   const answers = new Map();
   const fieldAnswers = new Map();
   const lastAI = new Map();
+  const appliedAnswers = new Map();
+  function applyFieldAnswer(field, answer) {
+    const value = answer.trim();
+    if (!value) {
+      status.textContent = `Enter an answer for ${names[field]} first.`;
+      form.querySelector(`[data-field-answer="${field}"]`)?.focus();
+      return;
+    }
+    const input = form.elements[field];
+    input.value = value;
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+    // An explicit answer belongs to the user, not to a model-generated revision.
+    lastAI.delete(field);
+    appliedAnswers.set(field, value);
+    status.textContent = `Your answer was placed in ${names[field]}. No other fields were changed. You can edit it before saving.`;
+    input.focus();
+  }
   const names = {title: 'Title', action: 'Action', metric: 'Metric', impact: 'Impact', supporting_narrative: 'Supporting evidence / notes', systems: 'Systems', technologies: 'Technologies', tags: 'Tags', categories: 'Categories'};
   async function assist() {
     if (button.disabled) return;
@@ -15,6 +32,7 @@
     if (!note.trim()) { status.textContent = 'First describe what you did in the note above.'; form.elements.raw_note.focus(); return; }
     results.querySelectorAll('[data-question]').forEach(input => answers.set(input.dataset.question, input.value));
     form.querySelectorAll('[data-field-answer]').forEach(input => fieldAnswers.set(input.dataset.fieldAnswer, {question: input.dataset.questionText, answer: input.value}));
+    const submittedFieldAnswers = new Map([...fieldAnswers].filter(([field, item]) => item.answer.trim() && !(appliedAnswers.get(field) === item.answer.trim() && form.elements[field].value !== appliedAnswers.get(field))).map(([field, item]) => [field, item.answer.trim()]));
     const followUp = [...[...fieldAnswers].filter(([, item]) => item.answer.trim()).map(([field, item]) => `Field: ${field}\nQuestion: ${item.question}\nAnswer: ${item.answer}`), ...[...answers].filter(([, answer]) => answer.trim()).map(([question, answer]) => `Question: ${question}\nAnswer: ${answer}`)].join('\n\n');
     button.disabled = true;
     results.querySelectorAll('button, textarea').forEach(control => control.disabled = true);
@@ -38,15 +56,23 @@
       if (form.elements.raw_note.value !== note || form.elements.provider_id.value !== provider) { status.textContent = 'Your note or provider changed. Click Help me fill this out again for fresh suggestions.'; return; }
       results.replaceChildren();
       form.querySelectorAll('.field-followup').forEach(section => section.remove());
+      // Even the general refinement action must honor explicitly named answers.
+      // Model output cannot reroute them into Supporting evidence / notes.
+      for (const [field, answer] of submittedFieldAnswers) {
+        draft[field] = answer;
+        if (draft.field_questions) delete draft.field_questions[field];
+      }
       let preserved = 0;
       for (const [name, label] of Object.entries(names)) {
+        if (name === 'supporting_narrative' && submittedFieldAnswers.size) continue;
         const suggested = draft[['systems', 'technologies', 'tags', 'categories'].includes(name) ? `suggested_${name}` : name];
         const value = Array.isArray(suggested) ? suggested.join(', ') : suggested;
         if (typeof value !== 'string' || !value.trim()) continue;
         const input = form.elements[name];
-        if ((!input.value.trim() || input.value === lastAI.get(name)) && input.value === original[name]) {
+        const isFieldAnswer = submittedFieldAnswers.has(name);
+        if ((!input.value.trim() || input.value === lastAI.get(name) || isFieldAnswer) && input.value === original[name]) {
           input.value = value; input.dispatchEvent(new Event('input', {bubbles: true}));
-          lastAI.set(name, value);
+          if (isFieldAnswer) { lastAI.delete(name); appliedAnswers.set(name, value); } else lastAI.set(name, value);
         } else {
           preserved++;
           const panel = document.createElement('section'); panel.className = 'panel';
@@ -63,8 +89,13 @@
         const heading = document.createElement('h3'); heading.textContent = `Help complete ${names[field]}`;
         const label = document.createElement('label'); label.textContent = question;
         const input = document.createElement('textarea'); input.dataset.fieldAnswer = field; input.dataset.questionText = question; input.value = fieldAnswers.get(field)?.answer || ''; input.maxLength = 10000;
-        const update = document.createElement('button'); update.type = 'button'; update.dataset.refineField = field; update.textContent = `Update ${names[field]} from my answer`; update.addEventListener('click', assist);
-        label.append(input); section.append(heading, label, update);
+        const update = document.createElement('button'); update.type = 'button'; update.dataset.refineField = field; update.textContent = `Update ${names[field]} from my answer`;
+        const hint = document.createElement('p'); hint.className = 'muted'; hint.textContent = `Your answer goes directly into ${names[field]}; other fields will not change.`;
+        update.addEventListener('click', () => {
+          fieldAnswers.set(field, {question, answer: input.value});
+          applyFieldAnswer(field, input.value);
+        });
+        label.append(input); section.append(heading, label, hint, update);
         form.elements[field].closest('label').after(section);
       }
       const activeQuestions = (draft.questions || []).slice(0, 3);

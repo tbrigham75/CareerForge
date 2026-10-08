@@ -158,7 +158,10 @@ try:
                         "suggested_technologies": [],
                         "suggested_tags": ["patching"],
                         "suggested_categories": [],
-                        "field_questions": {"impact": "What was the verified outcome?"},
+                        "field_questions": {
+                            "impact": "What was the verified outcome?",
+                            "metric": "How many settings did you review?",
+                        },
                         "questions": [],
                     }
                 }
@@ -177,11 +180,29 @@ try:
             "All services restarted successfully."
         )
         page.get_by_label("Action", exact=True).fill("My manually refined action")
+        page.get_by_label("Supporting evidence / notes", exact=True).fill(
+            "Keep this evidence unchanged."
+        )
+        page.get_by_label("How many settings did you review?", exact=True).fill(
+            "Reviewed 24 CIS settings and identified 3 exceptions."
+        )
+        page.get_by_role("button", name="Update Metric from my answer", exact=True).click()
+        expect(page.get_by_label("Metric", exact=True)).to_have_value(
+            "Reviewed 24 CIS settings and identified 3 exceptions."
+        )
+        expect(page.get_by_label("Impact", exact=True)).to_have_value("[Confirm outcome]")
+        page.get_by_role("button", name="Update Impact from my answer", exact=True).click()
+        expect(page.get_by_label("Impact", exact=True)).to_have_value(
+            "All services restarted successfully."
+        )
+        expect(page.get_by_label("Supporting evidence / notes", exact=True)).to_have_value(
+            "Keep this evidence unchanged."
+        )
         page.route(
             "**/capture/assist",
             lambda route: route.fulfill(status=502, json={"error": "Simulated provider outage"}),
         )
-        page.get_by_role("button", name="Update Impact from my answer", exact=True).click()
+        page.get_by_role("button", name="Help me fill this out", exact=True).click()
         expect(page.locator("#assist-status")).to_have_text("Simulated provider outage")
         expect(page.get_by_label("What was the verified outcome?", exact=True)).to_have_value(
             "All services restarted successfully."
@@ -200,19 +221,26 @@ try:
                     "draft": {
                         "title": "Patched servers",
                         "action": "Suggested new action",
-                        "metric": "Four servers",
-                        "impact": "All services restarted successfully.",
+                        "metric": "[Missing information]",
+                        "impact": "[Missing information]",
+                        "supporting_narrative": "Reviewed 24 CIS settings and identified 3 exceptions. All services restarted successfully.",
                         "questions": [],
                     }
                 }
             )
 
         page.route("**/capture/assist", refine_response)
-        page.get_by_role("button", name="Update Impact from my answer", exact=True).click()
+        page.get_by_role("button", name="Help me fill this out", exact=True).click()
         expect(page.get_by_label("Impact", exact=True)).to_have_value(
             "All services restarted successfully."
         )
         expect(page.get_by_label("Action", exact=True)).to_have_value("My manually refined action")
+        expect(page.get_by_label("Metric", exact=True)).to_have_value(
+            "Reviewed 24 CIS settings and identified 3 exceptions."
+        )
+        expect(page.get_by_label("Supporting evidence / notes", exact=True)).to_have_value(
+            "Keep this evidence unchanged."
+        )
         expect(page.get_by_label("What did you do?")).to_have_value("Patched four Linux servers.")
         page.unroute("**/capture/assist")
         results["interactions"].append(
