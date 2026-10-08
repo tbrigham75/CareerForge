@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import calendar
 import hashlib
 import json
 import logging
@@ -15,6 +16,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 from typing import Annotated
+from zoneinfo import available_timezones
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -40,6 +42,7 @@ from app.models import (
     PendingFileDeletion,
     Project,
     Report,
+    ReportingSettings,
     ReportItem,
     ReportTemplate,
     User,
@@ -58,6 +61,7 @@ from app.services import (
     database_maintenance,
     git_ops,
     native_picker,
+    reporting_year,
     taxonomy,
     trash,
 )
@@ -368,7 +372,8 @@ def logout(request: Request, csrf: Annotated[str, Form()]):
 
 @app.get("/dashboard")
 def dashboard(request: Request, session: SessionDependency, _: User = Depends(current_user)):
-    recent = accomplishments.search(session)[:8]
+    period = reporting_year.current_period(reporting_year.preferences(session))
+    recent = reporting_year.current_records(accomplishments.search(session), period)[:8]
     count = (
         session.scalar(
             select(func.count())
@@ -378,7 +383,7 @@ def dashboard(request: Request, session: SessionDependency, _: User = Depends(cu
         or 0
     )
     return templates.TemplateResponse(
-        "dashboard.html", context(request, recent=recent, count=count)
+        "dashboard.html", context(request, recent=recent, count=count, period=period)
     )
 
 
@@ -662,6 +667,7 @@ def capture_project_options(session: SessionDependency, _: User = Depends(curren
 
 
 @app.get("/accomplishments")
+@app.get("/history")
 def archive(
     request: Request,
     session: SessionDependency,
@@ -674,7 +680,46 @@ def archive(
     tag: str = "",
     technology: str = "",
     project_id: str = "",
+    scope: str = "current",
+    year: str = "",
 ):
+    if scope not in {"current", "all"}:
+        raise HTTPException(400, "Choose Current reporting year or All years.")
+    preference = reporting_year.preferences(session)
+    period = reporting_year.current_period(preference)
+    history = request.url.path == "/history"
+    all_records = accomplishments.search(session, include_archived=True)
+    periods = {
+        reporting_year.period_for(record.date_completed, preference)
+        for record in reporting_year.historical_records(all_records, period)
+        if record.date_completed is not None
+    }
+    years = sorted(periods, key=lambda item: item.start, reverse=True)
+    selected = next((item for item in years if item.start.isoformat() == year), None)
+    if history and year and selected is None:
+        raise HTTPException(400, "Choose an available historical reporting year.")
+    records = accomplishments.search(
+        session,
+        q,
+        archived,
+        parse_date(date_from),
+        parse_date(date_to),
+        sensitivity,
+        tag,
+        technology,
+        project_id,
+    )
+    if history:
+        records = reporting_year.historical_records(records, period)
+        if selected:
+            records = [
+                record
+                for record in records
+                if record.date_completed is not None
+                and selected.start <= record.date_completed <= selected.end
+            ]
+    elif scope == "current":
+        records = reporting_year.current_records(records, period)
     filters = {
         "date_from": date_from,
         "date_to": date_to,
@@ -687,17 +732,12 @@ def archive(
         "accomplishments.html",
         context(
             request,
-            records=accomplishments.search(
-                session,
-                q,
-                archived,
-                parse_date(date_from),
-                parse_date(date_to),
-                sensitivity,
-                tag,
-                technology,
-                project_id,
-            ),
+            records=records,
+            history=history,
+            period=period,
+            years=years,
+            year=year,
+            scope=scope,
             query=q,
             archived=archived,
             projects=list(session.scalars(select(Project).order_by(Project.name))),
@@ -905,6 +945,73 @@ def edit_project(
             status_code=status,
         )
     return redirect("/projects?saved=1")
+
+
+def reporting_settings_view(request: Request, preference: ReportingSettings, **values: object):
+    return templates.TemplateResponse(
+        "reporting_year.html",
+        context(
+            request,
+            preference=preference,
+            period=reporting_year.current_period(preference),
+            months=list(calendar.month_name)[1:],
+            timezones=sorted(available_timezones()),
+            **values,
+        ),
+    )
+
+
+@app.get("/reporting-year")
+def reporting_settings_page(
+    request: Request, session: SessionDependency, _: User = Depends(current_user)
+):
+    return reporting_settings_view(
+        request,
+        reporting_year.preferences(session),
+        message="Reporting settings saved. Records have been regrouped without changing their content."
+        if request.query_params.get("saved") == "1"
+        else None,
+    )
+
+
+@app.post("/reporting-year")
+def save_reporting_settings(
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    mode: Annotated[str, Form()],
+    start_month: Annotated[int, Form()],
+    year_naming: Annotated[str, Form()],
+    timezone: Annotated[str, Form()],
+    action: Annotated[str, Form()] = "save",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    try:
+        reporting_year.validate(mode, start_month, year_naming, timezone)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if action not in {"save", "preview"}:
+        raise HTTPException(400, "Unknown reporting settings action.")
+    preference = ReportingSettings(
+        id=1, mode=mode, start_month=start_month, year_naming=year_naming, timezone=timezone
+    )
+    if action == "preview":
+        return reporting_settings_view(request, preference, preview=True)
+    session.merge(preference)
+    session.add(
+        AuditEvent(
+            event_type="reporting_year.updated",
+            metadata_json={
+                "mode": mode,
+                "start_month": start_month,
+                "year_naming": year_naming,
+                "timezone": timezone,
+            },
+        )
+    )
+    session.commit()
+    return redirect("/reporting-year?saved=1")
 
 
 def database_view(request: Request, session: Session, **values: object):

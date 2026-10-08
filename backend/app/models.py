@@ -289,3 +289,12 @@ class PendingFileDeletion(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     stored_path: Mapped[str] = mapped_column(Text)
     last_error: Mapped[str] = mapped_column(Text, default="")
+
+
+class ReportingSettings(Base):
+    __tablename__ = "reporting_settings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    mode: Mapped[str] = mapped_column(String(20), default="calendar")
+    start_month: Mapped[int] = mapped_column(Integer, default=1)
+    year_naming: Mapped[str] = mapped_column(String(20), default="ending")
+    timezone: Mapped[str] = mapped_column(String(100), default="UTC")

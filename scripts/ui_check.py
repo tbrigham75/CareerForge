@@ -224,7 +224,7 @@ try:
             "Repository picker, relative export folder, ODT filtering/selection, cancellation and focus restoration; no automatic submissions"
         )
         page.goto(base + "/dashboard")
-        assert page.locator(".empty-state").is_visible()
+        expect(page.locator(".empty-state")).to_be_visible()
         page.goto(base + "/capture")
         expect(
             page.get_by_role("link", name="Set up AI Provider (opens a new tab)")
@@ -510,7 +510,7 @@ try:
         page.goto(base + "/reports")
         page.get_by_role("link", name="October progress", exact=True).click()
         report_url = page.url
-        assert page.get_by_role("link", name="Download .docx").is_visible()
+        expect(page.get_by_role("link", name="Download .docx")).to_be_visible()
         results["interactions"].append(
             "Project creation and report generation with checkbox selection"
         )
@@ -519,13 +519,13 @@ try:
         page.get_by_role("button", name="Move to trash", exact=True).click()
         page.get_by_role("button", name="Settings", exact=True).click()
         page.get_by_role("link", name="Trash", exact=True).click()
-        assert page.get_by_role("heading", name="Trash", exact=True).is_visible()
+        expect(page.get_by_role("heading", name="Trash", exact=True)).to_be_visible()
         page.screenshot(path=str(ARTIFACTS / "trash-desktop.png"), full_page=True)
         page.set_viewport_size({"width": 320, "height": 1000})
         no_overflow(page)
         page.screenshot(path=str(ARTIFACTS / "trash-mobile.png"), full_page=True)
         page.get_by_role("button", name="Restore", exact=True).click()
-        assert page.get_by_text("Trash is empty.", exact=True).is_visible()
+        expect(page.get_by_text("Trash is empty.", exact=True)).to_be_visible()
         page.goto(record_url)
         page.get_by_role("button", name="Archive", exact=True).click()
         page.goto(base + "/accomplishments?archived=true")
@@ -537,7 +537,7 @@ try:
         project_edit_url = page.url
         page.get_by_label("Description", exact=True).fill("Updated after creating the project.")
         page.get_by_role("button", name="Save project", exact=True).click()
-        assert page.get_by_text("Project updated.", exact=True).is_visible()
+        expect(page.get_by_text("Project updated.", exact=True)).to_be_visible()
         page.get_by_role("link", name="Service reliability", exact=True).click()
         assert (
             page.get_by_label("Description", exact=True).input_value()
@@ -545,15 +545,52 @@ try:
         )
         page.goto(base + "/database")
         page.get_by_role("button", name="Check database health", exact=True).click()
-        assert page.get_by_role("heading", name="Health checks passed", exact=True).is_visible()
+        expect(page.get_by_role("heading", name="Health checks passed", exact=True)).to_be_visible()
         page.get_by_label("Type COMPACT to confirm", exact=True).fill("COMPACT")
         page.get_by_role("button", name="Back up and compact database", exact=True).click()
-        assert page.get_by_role("status").filter(has_text="Database compacted").is_visible()
+        expect(page.get_by_role("status").filter(has_text="Database compacted")).to_be_visible()
         page.get_by_role("button", name="Retry file cleanup", exact=True).click()
-        assert page.get_by_role("status").filter(has_text="File cleanup retried").is_visible()
+        expect(page.get_by_role("status").filter(has_text="File cleanup retried")).to_be_visible()
         page.screenshot(path=str(ARTIFACTS / "database-mobile.png"), full_page=True)
         results["interactions"].append(
             "Project editing, database health, snapshot-backed compaction, and cleanup retry"
+        )
+        page.goto(base + "/reporting-year")
+        page.get_by_label("Calendar", exact=True).select_option("fiscal")
+        page.get_by_label("Fiscal year starting month", exact=True).select_option("10")
+        page.get_by_label("Organization timezone", exact=True).select_option("America/Denver")
+        page.get_by_role("button", name="Preview dates", exact=True).click()
+        assert page.get_by_text(
+            "Preview only. Save settings to apply this calendar.", exact=True
+        ).is_visible()
+        page.get_by_role("button", name="Save reporting settings", exact=True).click()
+        expect(
+            page.get_by_role("status").filter(has_text="Reporting settings saved")
+        ).to_be_visible()
+        page.reload()
+        assert (
+            page.get_by_label("Organization timezone", exact=True).input_value() == "America/Denver"
+        )
+        no_overflow(page)
+        page.screenshot(path=str(ARTIFACTS / "reporting-year-mobile.png"), full_page=True)
+        page.goto(record_url + "/edit")
+        page.locator('[name="status"]').select_option("completed")
+        page.get_by_label("Start date", exact=True).fill("2000-01-01")
+        page.get_by_label("Completion date", exact=True).fill("2000-09-30")
+        page.get_by_role("button", name="Save revision", exact=True).click()
+        record_link = f'a[href="{record_url.replace(base, "")}"]'
+        page.goto(base + "/accomplishments")
+        assert page.locator("main " + record_link).count() == 0
+        page.goto(base + "/history")
+        page.get_by_label("Reporting year", exact=True).select_option("1999-10-01")
+        page.get_by_role("button", name="Search", exact=True).click()
+        expect(page.locator("main " + record_link)).to_be_visible()
+        no_overflow(page)
+        page.screenshot(path=str(ARTIFACTS / "history-mobile.png"), full_page=True)
+        page.locator("main " + record_link).click()
+        expect(page.get_by_role("link", name="Edit record", exact=True)).to_be_visible()
+        results["interactions"].append(
+            "Fiscal settings preview/persistence and editable historical accomplishment browsing"
         )
         routes = [
             "/dashboard",
@@ -569,6 +606,8 @@ try:
             "/audit",
             "/trash",
             "/database",
+            "/history",
+            "/reporting-year",
             project_edit_url,
             record_url,
             record_url + "/edit",
@@ -640,7 +679,7 @@ try:
         page.screenshot(path=str(ARTIFACTS / "capture-mobile.png"), full_page=True)
         expect(page.locator(".navigation")).not_to_be_visible()
         page.get_by_role("button", name="Menu", exact=True).click()
-        assert page.get_by_role("link", name="Overview", exact=True).is_visible()
+        expect(page.get_by_role("link", name="Overview", exact=True)).to_be_visible()
         page.set_viewport_size({"width": 1366, "height": 768})
         page.goto(base + "/dashboard")
         expect(page.get_by_role("link", name="Overview", exact=True)).to_be_visible()

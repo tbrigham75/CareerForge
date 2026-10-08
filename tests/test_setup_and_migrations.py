@@ -31,7 +31,7 @@ def test_fresh_migration_reaches_head_and_is_repeatable(tmp_path: Path):
     assert first.returncode == 0, first.stderr
     assert second.returncode == 0, second.stderr
     database = sqlite3.connect(data_dir / "data" / "careerforge.sqlite3")
-    assert database.execute("select version_num from alembic_version").fetchone() == ("0006_trash",)
+    assert database.execute("select version_num from alembic_version").fetchone() == ("0007_reporting_year",)
 
 
 def test_blank_data_directory_uses_local_app_data_default(tmp_path: Path):

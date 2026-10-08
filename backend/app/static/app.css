@@ -97,6 +97,8 @@ p { margin: 0 0 16px; overflow-wrap: anywhere; }
 .form-section p { margin-bottom: 0; font-size: 13px; }
 label { display: block; font-size: 13px; font-weight: 650; margin: 0 0 18px; }
 .grid label { margin-bottom: 0; }
+.reporting-field { margin-bottom: 18px; }
+.reporting-field > label { margin-bottom: 0; }
 input, textarea, select { width: 100%; min-height: 44px; padding: 10px 12px; margin-top: 7px; border: 1px solid var(--field-border); border-radius: var(--radius-sm); background: var(--panel); color: var(--ink); font: 400 15px/1.5 var(--font); }
 input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 input:hover, textarea:hover, select:hover { border-color: var(--accent); }
