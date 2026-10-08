@@ -27,8 +27,6 @@ from app.models import (
     AIProvider,
     AttachmentMetadata,
     AuditEvent,
-    Category,
-    Competency,
     EvidenceReference,
     ExportRun,
     GitRepositoryProfile,
@@ -37,9 +35,6 @@ from app.models import (
     Report,
     ReportItem,
     ReportTemplate,
-    Skill,
-    Tag,
-    Technology,
     User,
 )
 from app.schemas import AccomplishmentInput, AIProviderInput
@@ -51,7 +46,7 @@ from app.security import (
     require_csrf,
     verify_password,
 )
-from app.services import accomplishments, git_ops
+from app.services import accomplishments, git_ops, taxonomy
 from app.services.ai import (
     ProviderSafetyError,
     classify_and_validate_url,
@@ -128,13 +123,14 @@ def browse_local_files(
     repository: Annotated[str, Form()] = "",
     select_path: Annotated[bool, Form()] = False,
     offset: Annotated[int, Form()] = 0,
+    show_hidden: Annotated[bool, Form()] = False,
     _: User = Depends(current_user),
 ):
     require_csrf(request, csrf)
     try:
         if kind == "subdirectory" and not repository.strip():
             raise ValueError("Choose a repository folder first.")
-        return browse_paths(kind, path, repository, select_path, offset)
+        return browse_paths(kind, path, repository, select_path, offset, show_hidden)
     except git_ops.GitOperationError:
         return JSONResponse(
             {"error": "This folder is not a usable Git repository."}, status_code=400
@@ -752,22 +748,26 @@ def projects_page(request: Request, session: SessionDependency, _: User = Depend
     return templates.TemplateResponse("projects.html", context(request, projects=projects))
 
 
-TAXONOMY_MODELS = {
-    "category": Category,
-    "tag": Tag,
-    "technology": Technology,
-    "skill": Skill,
-    "competency": Competency,
-}
+TAXONOMY_MODELS = taxonomy.GROUPS
 
 
 @app.get("/taxonomy")
 def taxonomy_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
     items = {
-        name: list(session.scalars(select(model).order_by(model.name)))
+        name: list(
+            {
+                entry.name.strip().casefold(): entry
+                for entry in session.scalars(select(model).order_by(model.name.desc()))
+            }.values()
+        )[::-1]
         for name, model in TAXONOMY_MODELS.items()
     }
     return templates.TemplateResponse("taxonomy.html", context(request, items=items))
+
+
+@app.get("/taxonomy/suggestions")
+def taxonomy_suggestions(session: SessionDependency, _: User = Depends(current_user)):
+    return taxonomy.suggestions(session)
 
 
 @app.post("/taxonomy")
@@ -783,9 +783,10 @@ def create_taxonomy_item(
     model = TAXONOMY_MODELS.get(kind)
     if not model or not name.strip():
         raise HTTPException(status_code=400, detail="Choose a taxonomy type and provide a name.")
-    if session.scalar(select(model).where(model.name == name.strip())):
-        return redirect("/taxonomy")
-    session.add(model(name=name.strip()))
+    try:
+        taxonomy.register(session, model, [name])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     session.add(AuditEvent(event_type="taxonomy.created", metadata_json={"kind": kind}))
     session.commit()
     return redirect("/taxonomy")
@@ -1292,43 +1293,146 @@ def discard_ai_draft(
     return redirect(f"/accomplishments/{record.id}")
 
 
-@app.get("/reports")
-def reports_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
-    records = accomplishments.search(session)
+def report_page_response(
+    request: Request, session: Session, values=None, selected=None, error="", status_code=200
+):
+    records = [record for record in accomplishments.search(session) if record.report_inclusion]
     templates_list = list(session.scalars(select(ReportTemplate).order_by(ReportTemplate.name)))
     reports = list(session.scalars(select(Report).order_by(Report.created_at.desc())))
+    defaults = {
+        "title": f"Accomplishments — {date.today().isoformat()}",
+        "content": "",
+        "report_type": "custom",
+        "output_filename": f"accomplishments-{date.today().isoformat()}.docx",
+        "template_id": "",
+        "query": "",
+        "date_from": "",
+        "date_to": "",
+    }
+    defaults.update(values or {})
     return templates.TemplateResponse(
-        "reports.html", context(request, records=records, templates=templates_list, reports=reports)
+        "reports.html",
+        context(
+            request,
+            records=records,
+            templates=templates_list,
+            reports=reports,
+            values=defaults,
+            selected=selected,
+            error=error,
+            template_data={
+                item.id: {"name": item.name, "settings": item.settings or {"content": item.content}}
+                for item in templates_list
+            },
+            report_directory=str(settings.data_dir / "reports"),
+        ),
+        status_code=status_code,
     )
 
 
+@app.get("/reports")
+def reports_page(request: Request, session: SessionDependency, _: User = Depends(current_user)):
+    values = {
+        key: request.query_params[key]
+        for key in ("query", "date_from", "date_to")
+        if key in request.query_params
+    }
+    return report_page_response(request, session, values)
+
+
+def reusable_report_settings(values) -> dict[str, str]:
+    result = {
+        key: str(values[key]).strip()
+        for key in ("title", "content", "report_type", "output_filename")
+        if key in values
+    }
+    if "title" in result and (not result["title"] or len(result["title"]) > 300):
+        raise ValueError("Enter a report title of 1–300 characters.")
+    if len(result.get("content", "")) > 20000:
+        raise ValueError("Keep report notes under 20,000 characters.")
+    if result.get("report_type", "custom") not in {"custom", "monthly", "quarterly", "annual"}:
+        raise ValueError("Choose a supported report type.")
+    filename = result.get("output_filename")
+    if filename is not None and (
+        not filename
+        or len(filename) > 180
+        or re.search(r'[\\/:*?"<>|\x00-\x1f]', filename)
+        or not filename.lower().endswith(".docx")
+    ):
+        raise ValueError(
+            "Enter a filename ending in .docx, without folder paths or special filename characters."
+        )
+    return result
+
+
 @app.post("/reports/templates")
-def create_report_template(
+@app.post("/reports/templates/{template_id}/update")
+async def create_report_template(
     request: Request,
     session: SessionDependency,
     csrf: Annotated[str, Form()],
     name: Annotated[str, Form()],
     content: Annotated[str, Form()] = "",
+    template_id: str = "",
     _: User = Depends(current_user),
 ):
     require_csrf(request, csrf)
-    if not name.strip():
-        raise HTTPException(status_code=400, detail="Template name is required.")
-    if session.scalar(select(ReportTemplate).where(ReportTemplate.name == name.strip())):
-        raise HTTPException(
-            status_code=409, detail="A report template with that name already exists."
+    if not name.strip() or len(name.strip()) > 150:
+        return JSONResponse(
+            {"error": "Enter a template name of 1–150 characters."}, status_code=400
         )
-    template = ReportTemplate(name=name.strip(), content=content.strip())
+    existing = list(session.scalars(select(ReportTemplate)))
+    if any(
+        item.id != template_id and item.name.casefold() == name.strip().casefold()
+        for item in existing
+    ):
+        return JSONResponse({"error": "A template with that name already exists."}, status_code=409)
+    try:
+        saved_settings = reusable_report_settings(await request.form())
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    template = session.get(ReportTemplate, template_id) if template_id else ReportTemplate()
+    if template is None:
+        return JSONResponse({"error": "Template no longer exists."}, status_code=404)
+    template.name = name.strip()
+    template.content = content.strip()
+    template.settings = saved_settings
     session.add(template)
+    session.flush()
     session.add(
-        AuditEvent(event_type="report_template.created", metadata_json={"template_id": template.id})
+        AuditEvent(
+            event_type="report_template.updated" if template_id else "report_template.created",
+            metadata_json={"template_id": template.id},
+        )
     )
     session.commit()
+    if "application/json" in request.headers.get("accept", ""):
+        return {"id": template.id, "name": template.name, "settings": template.settings}
     return redirect("/reports")
 
 
+@app.post("/reports/templates/{template_id}/delete")
+def delete_report_template(
+    template_id: str,
+    request: Request,
+    session: SessionDependency,
+    csrf: Annotated[str, Form()],
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    template = session.get(ReportTemplate, template_id)
+    if not template:
+        return JSONResponse({"error": "Template no longer exists."}, status_code=404)
+    session.delete(template)
+    session.add(
+        AuditEvent(event_type="report_template.deleted", metadata_json={"template_id": template_id})
+    )
+    session.commit()
+    return {"deleted": template_id}
+
+
 @app.post("/reports")
-def create_report(
+async def create_report(
     request: Request,
     session: SessionDependency,
     csrf: Annotated[str, Form()],
@@ -1338,25 +1442,71 @@ def create_report(
     _: User = Depends(current_user),
 ):
     require_csrf(request, csrf)
-    records = [get_record(session, record_id) for record_id in record_ids or []]
-    if not records:
-        return templates.TemplateResponse(
-            "reports.html",
-            context(
-                request,
-                records=accomplishments.search(session),
-                error="Select at least one accomplishment.",
-            ),
-            status_code=400,
+    form = await request.form()
+    values = {
+        key: str(form[key])
+        for key in (
+            "title",
+            "content",
+            "report_type",
+            "output_filename",
+            "template_id",
+            "query",
+            "date_from",
+            "date_to",
         )
+        if key in form
+    }
+    selected = list(dict.fromkeys(record_ids or []))
+    try:
+        config = reusable_report_settings(values)
+        start = parse_date(values.get("date_from", ""))
+        end = parse_date(values.get("date_to", ""))
+        if start and end and start > end:
+            raise ValueError("The report start date must be on or before the end date.")
+        eligible = {
+            record.id: record
+            for record in accomplishments.search(session, date_from=start, date_to=end)
+            if record.report_inclusion
+        }
+        query = values.get("query", "").strip().casefold()
+        eligible = {
+            key: record
+            for key, record in eligible.items()
+            if not query
+            or query
+            in f"{record.title} {record.raw_note} {record.action} {' '.join(record.tags)}".casefold()
+        }
+        if not selected:
+            raise ValueError("Select at least one accomplishment.")
+        if any(key not in eligible for key in selected):
+            raise ValueError(
+                "Some selected accomplishments are no longer eligible for this scope. Review your selection."
+            )
+    except ValueError as exc:
+        return report_page_response(request, session, values, selected, str(exc), 400)
+    records = [eligible[key] for key in selected]
     template = session.get(ReportTemplate, template_id) if template_id else None
-    report = generate_docx(
-        session,
-        title.strip() or "CareerForge report",
-        records,
-        template_id=template.id if template else "",
-        template_content=template.content if template else "",
-    )
+    try:
+        report = generate_docx(
+            session,
+            config["title"],
+            records,
+            report_type=config.get("report_type", "custom"),
+            template_id=template.id if template else "",
+            template_content=config.get("content", template.content if template else ""),
+            output_filename=config.get("output_filename", ""),
+        )
+    except OSError:
+        session.rollback()
+        return report_page_response(
+            request,
+            session,
+            values,
+            selected,
+            "The report could not be written. Check free space and access to the CareerForge reports directory, then retry.",
+            500,
+        )
     return redirect(f"/reports/{report.id}/download")
 
 
@@ -1426,7 +1576,7 @@ def download_report(
         raise HTTPException(status_code=404, detail="Report file not found.")
     return FileResponse(
         report.output_path,
-        filename=Path(report.output_path).name,
+        filename=report.filters.get("output_filename") or Path(report.output_path).name,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
 

@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 from cryptography.fernet import Fernet
+from playwright.sync_api import Error as BrowserError
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,7 +61,14 @@ try:
         context = browser.new_context(viewport={"width": 1440, "height": 1000})
         page = context.new_page()
         page.on("pageerror", lambda error: results["errors"].append(str(error)))
-        page.goto(base + "/setup")
+        for startup_attempt in range(3):
+            try:
+                page.goto(base + "/setup")
+                break
+            except BrowserError as exc:
+                if startup_attempt == 2 or "ERR_CONNECTION_RESET" not in str(exc):
+                    raise
+                page.wait_for_timeout(500)
         page.get_by_label("Username", exact=True).fill("ui-review")
         page.get_by_label("Password (12+ characters)", exact=True).fill("isolated review password")
         page.get_by_label("Confirm password", exact=True).fill("isolated review password")
@@ -96,6 +104,9 @@ try:
         page.locator('[data-browse="subdirectory"]').click()
         expect(page.locator("dialog [data-status]")).to_contain_text("Choose or enter a repository")
         page.keyboard.press("Escape")
+        page.locator('[data-browse="repository"]').locator("..").get_by_role(
+            "button", name="Edit path (advanced)", exact=True
+        ).click()
         page.get_by_label("Repository path", exact=True).fill(str(fixture_repo))
         page.locator('[data-browse="repository"]').click()
         expect(page.locator("dialog [data-select]")).to_be_enabled()
@@ -105,16 +116,18 @@ try:
             str(fixture_repo.resolve())
         )
         page.locator('[data-browse="subdirectory"]').click()
-        page.get_by_role("button", name="Folder · exports", exact=True).click()
+        page.get_by_role("button", name="Open folder exports", exact=True).click()
         expect(page.locator("#browser-location")).to_have_value(str(fixture_repo / "exports"))
         page.locator("dialog [data-select]").click()
         expect(page.get_by_label("Export subdirectory", exact=True)).to_have_value("exports")
         assert page.url == base + "/exports"
         page.goto(base + "/imports")
+        page.get_by_role("button", name="Edit path (advanced)", exact=True).click()
         page.get_by_label("Local ODT source path").fill(str(fixture_repo))
         page.get_by_role("button", name="Browse files", exact=True).click()
         expect(page.locator("dialog [data-select]")).not_to_be_visible()
-        page.get_by_role("button", name="ODT file · Example.ODT", exact=True).click()
+        page.get_by_role("button", name="Select file Example.ODT", exact=True).click()
+        page.get_by_role("button", name="Use selected file", exact=True).click()
         expect(page.get_by_label("Local ODT source path")).to_have_value(str(fixture_source))
         assert page.url == base + "/imports"
         page.get_by_role("button", name="Browse files", exact=True).click()
@@ -308,6 +321,65 @@ try:
         page.get_by_role("button", name="Create project").click()
         assert page.get_by_role("cell", name="Service reliability", exact=True).is_visible()
         page.goto(base + "/reports")
+        expect(page.locator('input[name="record_ids"]').first).to_be_checked()
+        expect(page.locator("#report-selection-count")).to_contain_text("1 selected of 1")
+        page.locator('input[name="record_ids"]').first.uncheck()
+        page.get_by_label("Report title", exact=True).fill("Template title")
+        page.get_by_label("Report notes", exact=True).fill("Notes for leadership")
+        page.get_by_label("Template name", exact=True).fill("Monthly review")
+        page.get_by_role("button", name="Save settings as new template", exact=True).click()
+        expect(page.locator("#template-status")).to_contain_text("Template saved")
+        template_id = page.locator("#report-template").input_value()
+        page.get_by_label("Report title", exact=True).fill("My unsaved edit")
+        page.locator("#report-template").select_option("")
+        page.once("dialog", lambda dialog: dialog.dismiss())
+        page.locator("#report-template").select_option(template_id)
+        expect(page.get_by_label("Report title", exact=True)).to_have_value("My unsaved edit")
+        page.once("dialog", lambda dialog: dialog.accept())
+        page.locator("#report-template").select_option(template_id)
+        expect(page.get_by_label("Report title", exact=True)).to_have_value("Template title")
+        expect(page.locator('input[name="record_ids"]').first).not_to_be_checked()
+        page.get_by_label("Report notes", exact=True).fill("Updated leadership notes")
+        page.once("dialog", lambda dialog: dialog.accept())
+        page.get_by_role("button", name="Update selected template", exact=True).click()
+        expect(page.locator("#template-status")).to_contain_text("Template saved")
+        page.reload()
+        page.locator("#report-template").select_option(template_id)
+        expect(page.get_by_label("Report notes", exact=True)).to_have_value(
+            "Updated leadership notes"
+        )
+        page.get_by_role("button", name="Deselect all", exact=True).click()
+        page.get_by_label("Search accomplishments", exact=True).fill("no matching records")
+        expect(page.locator("#report-selection-count")).to_contain_text("0 selected of 0")
+        page.get_by_label("Search accomplishments", exact=True).fill("")
+        expect(page.locator("#report-selection-count")).to_contain_text("0 selected of 1")
+        page.get_by_role("button", name="Generate .docx report", exact=True).click()
+        expect(page.locator("#report-validation")).to_contain_text("Select at least one")
+        page.once("dialog", lambda dialog: dialog.accept())
+        page.get_by_role("button", name="Delete selected template", exact=True).click()
+        expect(page.locator("#template-status")).to_contain_text("Template deleted")
+        expect(page.get_by_label("Report notes", exact=True)).to_have_value(
+            "Updated leadership notes"
+        )
+        expect(page.locator('input[name="record_ids"]').first).not_to_be_checked()
+        page.get_by_role("button", name="Select all", exact=True).click()
+        # Native dialog is mocked; report generation and byte transfer are real.
+        page.evaluate(
+            """window.showSaveFilePicker = async () => ({name: 'chosen-report.docx', createWritable: async () => ({write: async blob => window.savedReportBytes = blob.size, close: async () => {}, abort: async () => {}})})"""
+        )
+        page.get_by_role("button", name="Browse save location", exact=True).click()
+        expect(page.locator("#report-destination-status")).to_contain_text("chosen-report.docx")
+        page.evaluate(
+            "() => { window.showSaveFilePicker = async () => { throw new DOMException('Canceled', 'AbortError'); }; }"
+        )
+        page.get_by_role("button", name="Browse save location", exact=True).click()
+        expect(page.locator("#report-destination-status")).to_contain_text("chosen-report.docx")
+        page.get_by_role("button", name="Generate .docx report", exact=True).click()
+        expect(page.locator("#report-destination-status")).to_contain_text(
+            "Saved chosen-report.docx"
+        )
+        assert page.evaluate("window.savedReportBytes") > 1000
+        page.get_by_role("button", name="Use normal download location", exact=True).click()
         page.get_by_label("Report title").fill("October progress")
         page.locator('input[name="record_ids"]').first.check()
         with page.expect_download() as download:

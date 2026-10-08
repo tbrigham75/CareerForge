@@ -141,6 +141,15 @@ class NamedTaxonomy(Base):
     __abstract__ = True
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     name: Mapped[str] = mapped_column(String(150), unique=True, index=True)
+    name_key: Mapped[str] = mapped_column(
+        String(300),
+        unique=True,
+        default=lambda context: context.get_current_parameters()["name"].strip().casefold(),
+    )
+
+
+class SystemService(NamedTaxonomy):
+    __tablename__ = "system_services"
 
 
 class Category(NamedTaxonomy):
@@ -187,6 +196,7 @@ class ReportTemplate(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     name: Mapped[str] = mapped_column(String(150), unique=True)
     content: Mapped[str] = mapped_column(Text, default="")
+    settings: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
 
 
 class AIProvider(Base):

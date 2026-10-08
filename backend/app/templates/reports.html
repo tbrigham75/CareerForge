@@ -1,7 +1,28 @@
 {% extends "base.html" %}
+{% block title %}Save Reports · CareerForge{% endblock %}
 {% block content %}
-<h1>Reports</h1><p class="notice">Create a local Microsoft Word `.docx` report from selected accomplishments. Report-specific output does not change the canonical record.</p>
-<form action="/reports/templates" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><h2>Save report template</h2><label>Name<input name="name" required></label><label>Guidance / notes<textarea name="content" placeholder="Audience, ordering, wording guidance"></textarea></label><button class="secondary">Save template</button></form>
-<form action="/reports" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label>Report title<input name="title" placeholder="Monthly accomplishments" required></label><label>Saved template<select name="template_id"><option value="">No template</option>{% for template in templates %}<option value="{{ template.id }}">{{ template.name }}</option>{% endfor %}</select></label><p class="muted">The selected template's notes are included in the generated report. Select records in the order you want them to appear.</p><h2>Select accomplishments</h2>{% for record in records %}<label><input type="checkbox" name="record_ids" value="{{ record.id }}"> <strong>{{ record.title }}</strong> — {{ record.date_completed or 'no completion date' }}</label>{% else %}<p>No records are available.</p>{% endfor %}<button>Generate .docx report</button></form>
+<h1>Save Reports</h1><p class="notice">Create a Word report without changing your accomplishments. All eligible records start selected; narrow the scope or uncheck any you want to exclude.</p>
+<form id="report-form" action="/reports" method="post" data-preserved-input="{{ 'true' if error else 'false' }}">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+<section aria-labelledby="template-heading"><h2 id="template-heading">Report template (optional)</h2>
+<label>Saved template<select name="template_id" id="report-template"><option value="">No template</option>{% for template in templates %}<option value="{{ template.id }}" {% if values.template_id == template.id %}selected{% endif %}>{{ template.name }}</option>{% endfor %}</select></label>
+<p class="muted">Selecting a template fills only its saved settings. Templates never store accomplishment selections or generated files.</p>
+<label>Template name<input id="template-name" maxlength="150" placeholder="Example: Monthly leadership update"></label>
+<div class="browser-toolbar"><button type="button" class="secondary" id="save-template">Save settings as new template</button><button type="button" class="secondary" id="update-template" disabled>Update selected template</button><button type="button" class="danger" id="delete-template" disabled>Delete selected template</button></div><p id="template-status" role="status"></p></section>
+<h2>Report settings</h2><div class="grid">
+<label>Report title<input name="title" required maxlength="300" value="{{ values.title }}"></label>
+<label>Report type<select name="report_type">{% for value in ['custom','monthly','quarterly','annual'] %}<option value="{{ value }}" {% if values.report_type == value %}selected{% endif %}>{{ value | title }}</option>{% endfor %}</select></label>
+<label class="wide">Report notes<textarea name="content" maxlength="20000">{{ values.content }}</textarea></label>
+<label>Output filename<input name="output_filename" required maxlength="180" value="{{ values.output_filename }}" aria-describedby="download-help"></label>
+<label>Output format<select aria-label="Output format"><option>Microsoft Word (.docx)</option></select></label></div>
+<p class="muted" id="download-help">A managed copy is kept at <code>{{ report_directory }}</code> on the CareerForge server. Choose where to save a copy on this browser's computer, or use the browser's normal download location. This does not select a server path.</p>
+<button type="button" class="secondary" id="choose-report-destination">Browse save location</button><button type="button" class="secondary" id="clear-report-destination" hidden>Use normal download location</button><p id="report-destination-status" role="status">Using your browser's normal download location.</p>
+<h2>Report scope</h2><div class="grid"><label>Search accomplishments<input name="query" value="{{ values.query }}"></label><label>Completed from<input type="date" name="date_from" value="{{ values.date_from }}"></label><label>Completed through<input type="date" name="date_to" value="{{ values.date_to }}"></label></div>
+<p class="muted">Archived, deleted, and report-excluded records are unavailable. A date range excludes undated records. Changing scope preserves the selections of records that remain in scope.</p>
+<h2>Select accomplishments</h2><div class="browser-toolbar"><button type="button" class="secondary" id="select-all-records">Select all</button><button type="button" class="secondary" id="deselect-all-records">Deselect all</button></div><p id="report-selection-count" role="status"></p>
+<div id="report-records">{% for record in records %}<label data-report-record data-date="{{ record.date_completed or '' }}" data-search="{{ record.title }} {{ record.raw_note }} {{ record.action }} {{ record.tags | join(' ') }}"><input type="checkbox" name="record_ids" value="{{ record.id }}" {% if selected is none or record.id in selected %}checked{% endif %}> <strong>{{ record.title }}</strong> — {{ record.date_completed or 'no completion date' }}</label>{% else %}<p>No eligible accomplishments are available.</p>{% endfor %}</div>
+<p id="report-validation" role="alert"></p><button id="generate-report">Generate .docx report</button>
+</form>
 <section class="panel"><h2>Generated reports</h2><ul>{% for report in reports %}<li><a href="/reports/{{ report.id }}">{{ report.title }}</a> · {{ report.created_at }}</li>{% else %}<li class="muted">No reports generated yet.</li>{% endfor %}</ul></section>
+<script type="application/json" id="report-template-data">{{ template_data | tojson }}</script><script src="/static/reports.js?v=1" defer></script>
 {% endblock %}

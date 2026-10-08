@@ -23,6 +23,14 @@ class AccomplishmentInput(BaseModel):
     status: str = "draft"
     approval_status: str = "draft"
 
+    @field_validator("systems", "technologies", "tags", "categories")
+    @classmethod
+    def labels_are_valid(cls, values: list[str]) -> list[str]:
+        labels = [part.strip() for value in values for part in value.split(",") if part.strip()]
+        if any(len(label) > 150 for label in labels):
+            raise ValueError("Each reusable label must be 150 characters or fewer.")
+        return list({label.casefold(): label for label in reversed(labels)}.values())[::-1]
+
     @field_validator("sensitivity")
     @classmethod
     def sensitivity_is_allowed(cls, value: str) -> str:

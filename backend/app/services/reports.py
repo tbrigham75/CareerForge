@@ -51,11 +51,16 @@ def generate_docx(
     report_type: str = "custom",
     template_id: str = "",
     template_content: str = "",
+    output_filename: str = "",
 ) -> Report:
     report = Report(
         title=title,
         report_type=report_type,
-        filters={"template_id": template_id, "template_content": template_content},
+        filters={
+            "template_id": template_id,
+            "template_content": template_content,
+            "output_filename": output_filename,
+        },
     )
     session.add(report)
     session.flush()
@@ -95,7 +100,9 @@ def regenerate_docx(session: Session, report: Report, items: list[ReportItem]) -
     filters = report.filters if isinstance(report.filters, dict) else {}
     template_content = str(filters.get("template_content") or "")
     snapshots = [item.source_snapshot for item in items]
-    _build_document(report.title, report.report_type, snapshots, template_content).save(report.output_path)
+    _build_document(report.title, report.report_type, snapshots, template_content).save(
+        report.output_path
+    )
     session.add(
         AuditEvent(
             event_type="report.regenerated",

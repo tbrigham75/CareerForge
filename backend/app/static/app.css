@@ -159,6 +159,15 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .browser-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 .browser-entries { max-height: 35vh; overflow-y: auto; margin: 12px 0; }
 .browser-entry { display: block; width: calc(100% - 8px); text-align: left; overflow-wrap: anywhere; }
+.browser-entry[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+.browser-breadcrumbs, .browser-shortcuts { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.browser-breadcrumbs { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
+.browser-breadcrumbs button { flex: 0 0 auto; }
+.file-browser .page-heading { flex-direction: row; align-items: center; }
+.file-browser .page-heading h2 { font-size: 18px; }
+.browser-breadcrumbs button { font-size: 12px; padding: 6px 10px; overflow-wrap: anywhere; }
+[data-report-record][hidden] { display: none !important; }
+#download-help code { overflow-wrap: anywhere; }
 .browser-entries:empty { display: none; }
 @media (max-width: 900px) {
   .sidebar { position: static; width: auto; padding: 16px 20px; border-right: 0; border-bottom: 1px solid var(--line); }

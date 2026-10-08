@@ -24,7 +24,14 @@ def local_path(value: str) -> Path:
     return path
 
 
-def browse_paths(kind: str, value: str, repository: str, select_path: bool, offset: int) -> dict:
+def browse_paths(
+    kind: str,
+    value: str,
+    repository: str,
+    select_path: bool,
+    offset: int,
+    show_hidden: bool = False,
+) -> dict:
     if kind not in {"repository", "subdirectory", "odt"}:
         raise ValueError("Unknown selection type.")
     root = local_path(repository) if kind == "subdirectory" else None
@@ -52,6 +59,8 @@ def browse_paths(kind: str, value: str, repository: str, select_path: bool, offs
     entries = []
     with os.scandir(path) as children:
         for child in children:
+            if not show_hidden and child.name.startswith("."):
+                continue
             try:
                 resolved = local_path(child.path)
                 if root is not None and not resolved.is_relative_to(root):
@@ -65,6 +74,21 @@ def browse_paths(kind: str, value: str, repository: str, select_path: bool, offs
                 continue
     entries.sort(key=lambda item: (not item["folder"], str(item["name"]).casefold()))
     offset = max(0, offset)
+    ancestors = [path, *path.parents]
+    if root:
+        ancestors = [item for item in ancestors if item == root or item.is_relative_to(root)]
+    shortcuts = []
+    for name, candidate in [
+        ("Home", Path.home()),
+        ("Documents", Path.home() / "Documents"),
+        ("Desktop", Path.home() / "Desktop"),
+    ]:
+        try:
+            candidate = local_path(str(candidate))
+            if candidate.is_dir() and (not root or candidate.is_relative_to(root)):
+                shortcuts.append({"name": name, "path": str(candidate)})
+        except (OSError, ValueError, RuntimeError):
+            continue
     return {
         "path": str(path),
         "parent": str(path.parent) if path != (root or path.parent) else None,
@@ -72,6 +96,10 @@ def browse_paths(kind: str, value: str, repository: str, select_path: bool, offs
         "previous": max(0, offset - 100) if offset else None,
         "next": offset + 100 if offset + 100 < len(entries) else None,
         "roots": [str(root)] if root else local_roots(),
+        "breadcrumbs": [
+            {"name": item.name or str(item), "path": str(item)} for item in reversed(ancestors)
+        ],
+        "shortcuts": shortcuts,
     }
 
 

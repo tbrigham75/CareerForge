@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Accomplishment, AccomplishmentRevision, AuditEvent, Project
 from app.schemas import AccomplishmentInput
+from app.services.taxonomy import register_record
 
 
 def snapshot(record: Accomplishment) -> dict[str, object]:
@@ -55,6 +56,7 @@ def create(session: Session, data: AccomplishmentInput, *, commit: bool = True) 
     values = data.model_dump()
     values["title"] = title
     record = Accomplishment(**values)
+    register_record(session, record)
     session.add(record)
     session.flush()
     record_revision(session, record, "created")
@@ -73,6 +75,7 @@ def update(
     if not record.title.strip():
         record.title = record.raw_note.strip()[:100] or "Untitled accomplishment"
     record.updated_at = datetime.now(UTC)
+    register_record(session, record)
     session.flush()
     record_revision(session, record, reason)
     session.add(

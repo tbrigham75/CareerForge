@@ -31,6 +31,17 @@ def test_browser_filters_files_and_does_not_modify_source(logged_in, tmp_path):
     assert logged_in.post("/files/browse", data=data).status_code == 400
 
 
+def test_browser_hidden_folders_and_breadcrumbs(logged_in, tmp_path):
+    (tmp_path / ".hidden").mkdir()
+    (tmp_path / "Documents").mkdir()
+    data = {"csrf": token(logged_in), "kind": "odt", "path": str(tmp_path)}
+    result = logged_in.post("/files/browse", data=data).json()
+    assert [item["name"] for item in result["entries"]] == ["Documents"]
+    assert result["breadcrumbs"][-1]["path"] == str(tmp_path.resolve())
+    result = logged_in.post("/files/browse", data={**data, "show_hidden": "true"}).json()
+    assert ".hidden" in [item["name"] for item in result["entries"]]
+
+
 def test_browser_repository_validation_and_boundaries(logged_in, tmp_path):
     repo = tmp_path / "repository"
     repo.mkdir()
