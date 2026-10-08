@@ -13,6 +13,7 @@
 <label>Report title<input name="title" required maxlength="300" value="{{ values.title }}"></label>
 <label>Report type<select name="report_type">{% for value in ['custom','monthly','quarterly','annual'] %}<option value="{{ value }}" {% if values.report_type == value %}selected{% endif %}>{{ value | title }}</option>{% endfor %}</select></label>
 <label class="wide">Report notes<textarea name="content" maxlength="20000">{{ values.content }}</textarea></label>
+<label>Report layout<select name="layout" aria-label="Report layout">{% for value, label in [('detailed', 'Detailed — Action, Metric, Impact'), ('impact_first', 'Impact first — outcomes before activities'), ('compact', 'Compact — concise labeled paragraphs')] %}<option value="{{ value }}" {% if values.layout == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
 <label>Output filename<input name="output_filename" required maxlength="180" value="{{ values.output_filename }}" aria-describedby="download-help"></label>
 <label>Output format<select aria-label="Output format"><option>Microsoft Word (.docx)</option></select></label></div>
 <p class="muted" id="download-help">A managed copy is kept at <code>{{ report_directory }}</code> on the CareerForge server. Choose where to save a copy on this browser's computer, or use the browser's normal download location. This does not select a server path.</p>
@@ -24,5 +25,5 @@
 <p id="report-validation" role="alert"></p><button id="generate-report">Generate .docx report</button>
 </form>
 <section class="panel"><h2>Generated reports</h2><ul>{% for report in reports %}<li><a href="/reports/{{ report.id }}">{{ report.title }}</a> · {{ report.created_at }}</li>{% else %}<li class="muted">No reports generated yet.</li>{% endfor %}</ul></section>
-<script type="application/json" id="report-template-data">{{ template_data | tojson }}</script><script src="/static/reports.js?v=1" defer></script>
+<script type="application/json" id="report-template-data">{{ template_data | tojson }}</script><script src="/static/reports.js?v=2" defer></script>
 {% endblock %}

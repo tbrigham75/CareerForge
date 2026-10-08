@@ -46,7 +46,7 @@ from app.security import (
     require_csrf,
     verify_password,
 )
-from app.services import accomplishments, git_ops, taxonomy
+from app.services import accomplishments, git_ops, native_picker, taxonomy
 from app.services.ai import (
     ProviderSafetyError,
     classify_and_validate_url,
@@ -142,6 +142,39 @@ def browse_local_files(
             {"error": "This location is unavailable or you do not have permission to browse it."},
             status_code=400,
         )
+
+
+@app.get("/files/picker-capabilities")
+def picker_capabilities(request: Request, _: User = Depends(current_user)):
+    return {"native": native_picker.available(request)}
+
+
+@app.post("/files/pick-native")
+def pick_native(
+    request: Request,
+    csrf: Annotated[str, Form()],
+    kind: Annotated[str, Form()],
+    path: Annotated[str, Form()] = "",
+    repository: Annotated[str, Form()] = "",
+    _: User = Depends(current_user),
+):
+    require_csrf(request, csrf)
+    if not native_picker.available(request):
+        return JSONResponse(
+            {
+                "error": "Windows dialogs require a browser connected directly to localhost on the Windows desktop running CareerForge."
+            },
+            status_code=403,
+        )
+    try:
+        return native_picker.choose(kind, path, repository)
+    except subprocess.TimeoutExpired:
+        return JSONResponse(
+            {"error": "The Windows picker timed out. Your selection is unchanged; browse again."},
+            status_code=408,
+        )
+    except (ValueError, OSError, RuntimeError, git_ops.GitOperationError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
 
 def parse_date(value: str) -> date | None:
@@ -1304,6 +1337,7 @@ def report_page_response(
         "content": "",
         "report_type": "custom",
         "output_filename": f"accomplishments-{date.today().isoformat()}.docx",
+        "layout": "detailed",
         "template_id": "",
         "query": "",
         "date_from": "",
@@ -1343,13 +1377,15 @@ def reports_page(request: Request, session: SessionDependency, _: User = Depends
 def reusable_report_settings(values) -> dict[str, str]:
     result = {
         key: str(values[key]).strip()
-        for key in ("title", "content", "report_type", "output_filename")
+        for key in ("title", "content", "report_type", "output_filename", "layout")
         if key in values
     }
     if "title" in result and (not result["title"] or len(result["title"]) > 300):
         raise ValueError("Enter a report title of 1–300 characters.")
     if len(result.get("content", "")) > 20000:
         raise ValueError("Keep report notes under 20,000 characters.")
+    if result.get("layout", "detailed") not in {"detailed", "impact_first", "compact"}:
+        raise ValueError("Choose a supported report layout.")
     if result.get("report_type", "custom") not in {"custom", "monthly", "quarterly", "annual"}:
         raise ValueError("Choose a supported report type.")
     filename = result.get("output_filename")
@@ -1450,6 +1486,7 @@ async def create_report(
             "content",
             "report_type",
             "output_filename",
+            "layout",
             "template_id",
             "query",
             "date_from",
@@ -1496,6 +1533,7 @@ async def create_report(
             template_id=template.id if template else "",
             template_content=config.get("content", template.content if template else ""),
             output_filename=config.get("output_filename", ""),
+            layout=config.get("layout", "detailed"),
         )
     except OSError:
         session.rollback()

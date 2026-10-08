@@ -6,7 +6,7 @@
   const templateName = document.querySelector('#template-name');
   const status = document.querySelector('#template-status');
   const validation = document.querySelector('#report-validation');
-  const settings = ['title', 'content', 'report_type', 'output_filename'];
+  const settings = ['title', 'content', 'report_type', 'output_filename', 'layout'];
   let destination = null;
   const destinationStatus = document.querySelector('#report-destination-status');
   const clearDestination = document.querySelector('#clear-report-destination');

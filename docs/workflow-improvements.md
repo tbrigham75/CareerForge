@@ -10,6 +10,15 @@ The Backups screen retains `/operations` and `/operations/backup` for compatibil
 
 ## Filesystem boundaries
 
+For a direct localhost connection on an interactive Windows desktop, Exports and Imports
+now open the standard **Windows Common Item Dialog** (folder selection for repositories
+and export folders; file selection for ODT documents). It runs on the CareerForge PC,
+requires authentication and CSRF validation, accepts only one active dialog, and times out
+after three minutes. Cancel leaves the form unchanged. Every returned path is checked
+again using the existing local-drive, file-type, and repository-containment restrictions.
+Remote/proxied connections and non-Windows servers retain the labeled server-browser
+fallback; they cannot open a window on someone else's desktop. Advanced path entry remains.
+
 - Repository folders, export subfolders, and ODT import sources are on the **server**
   running CareerForge. The authenticated picker browses that filesystem with breadcrumbs,
   drive/location choices, folder navigation, and explicit selection. Cancel never changes
@@ -36,6 +45,19 @@ Named templates persist title, notes, report type, and output filename, using th
 single-administrator ownership model. They do not store files, file handles, or record IDs.
 Selecting a template applies only saved fields, confirms before overwriting edited values,
 and allows further changes. Updating/deleting a template does not alter generated reports.
+
+Migration `0005_starter_reports` installs eight editable starter templates: Executive
+Summary, Monthly Update, Quarterly Review, Annual Self-Assessment, Promotion Evidence,
+Project Closeout, Security & Compliance, and Technical Operations. They supply useful
+titles, introductory notes, filenames, report types, and one of three document layouts:
+Detailed, Impact first, or Compact. Layout is editable, saved in templates and reports,
+and retained when a generated report is reordered. Templates never preselect evidence or
+assert accomplishments that the user has not recorded. Installation happens once, skips
+existing names, and does not overwrite customizations or recreate deleted starters on reload.
+
+Native file and folder dialogs were instantiated, opened, and canceled in Windows smoke
+tests. Headless browser tests mock their selection responses and verify form routing and
+cancel preservation; backend tests validate the selected paths and access restrictions.
 
 ## Migration 0004_workflow_settings
 

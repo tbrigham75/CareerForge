@@ -31,7 +31,7 @@ def test_fresh_migration_reaches_head_and_is_repeatable(tmp_path: Path):
     assert second.returncode == 0, second.stderr
     database = sqlite3.connect(data_dir / "data" / "careerforge.sqlite3")
     assert database.execute("select version_num from alembic_version").fetchone() == (
-        "0004_workflow_settings",
+        "0005_starter_reports",
     )
 
 

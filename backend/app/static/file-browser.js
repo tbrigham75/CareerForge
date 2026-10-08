@@ -1,6 +1,7 @@
 (() => {
   const triggers = document.querySelectorAll('[data-browse]');
   if (!triggers.length) return;
+  const capabilities = fetch('/files/picker-capabilities').then(response => response.ok ? response.json() : {native: false}).catch(() => ({native: false}));
   const dialog = document.createElement('dialog');
   dialog.className = 'file-browser';
   dialog.setAttribute('aria-labelledby', 'browser-title');
@@ -108,8 +109,37 @@
     const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'secondary'; edit.textContent = 'Edit path (advanced)';
     edit.onclick = () => { input.readOnly = !input.readOnly; edit.textContent = input.readOnly ? 'Edit path (advanced)' : 'Done editing path'; if (!input.readOnly) input.focus(); };
     button.after(edit);
+    const feedback = document.createElement('p'); feedback.className = 'muted'; feedback.setAttribute('role', 'status'); feedback.dataset.nativeStatus = '';
+    const fallback = document.createElement('details');
+    const summary = document.createElement('summary'); summary.textContent = 'Alternative server browsing';
+    const fallbackButton = document.createElement('button'); fallbackButton.type = 'button'; fallbackButton.className = 'secondary'; fallbackButton.textContent = 'Browse server folders (fallback)';
+    fallbackButton.onclick = () => openServer(button);
+    fallback.append(summary, fallbackButton);
+    button.closest('.path-control').after(feedback, fallback);
+    capabilities.then(data => { feedback.textContent = data.native ? 'Browse opens the standard Windows picker on this PC.' : 'This connection uses server folder navigation. Windows dialogs are available when connected directly to localhost on the Windows PC running CareerForge.'; fallback.hidden = !data.native; });
+    button.addEventListener('click', async () => {
+      if (!(await capabilities).native) { openServer(button); return; }
+      const form = button.closest('form');
+      const original = input.value;
+      const repositoryValue = form.querySelector('[name="repository_path"]')?.value || '';
+      if (button.dataset.browse === 'subdirectory' && !repositoryValue.trim()) { feedback.textContent = 'Choose a repository folder first.'; return; }
+      button.disabled = true;
+      feedback.textContent = 'The Windows picker is opening. Choose a location or click Cancel in that window.';
+      try {
+        const response = await fetch('/files/pick-native', {method: 'POST', body: new URLSearchParams({csrf: form.elements.csrf.value, kind: button.dataset.browse, path: original, repository: repositoryValue})});
+        if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Your session may have expired. Copy your work before reloading.');
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Windows could not open the picker.');
+        if (data.canceled) { feedback.textContent = 'Canceled. Your previous selection is unchanged.'; return; }
+        if (input.value !== original || (form.querySelector('[name="repository_path"]')?.value || '') !== repositoryValue) { feedback.textContent = 'The path changed while browsing. Your edits were preserved; browse again.'; return; }
+        input.value = data.selected;
+        input.dispatchEvent(new Event('input', {bubbles: true})); input.dispatchEvent(new Event('change', {bubbles: true}));
+        feedback.textContent = `Selected: ${data.selected}`;
+      } catch (error) { feedback.textContent = `${error.message} Previous selection unchanged.`; }
+      finally { button.disabled = false; button.focus(); }
+    });
   }
-  for (const button of triggers) button.addEventListener('click', () => {
+  function openServer(button) {
     trigger = button; kind = button.dataset.browse;
     target = document.getElementById(button.dataset.target);
     repository = button.closest('form').querySelector('[name="repository_path"]')?.value.trim() || '';
@@ -125,5 +155,5 @@
       return;
     }
     request(kind === 'subdirectory' ? repository : target.value.trim());
-  });
+  }
 })();

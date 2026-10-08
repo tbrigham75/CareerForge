@@ -9,9 +9,19 @@ from app.config import get_settings
 from app.models import Accomplishment, AuditEvent, Report, ReportItem
 
 
-def _add_record(document: WordDocument, snapshot: dict[str, object]) -> None:
+def _add_record(
+    document: WordDocument, snapshot: dict[str, object], layout: str = "detailed"
+) -> None:
     document.add_heading(str(snapshot.get("title") or "Untitled accomplishment"), level=1)
-    for heading, field in (("Action", "action"), ("Metric", "metric"), ("Impact", "impact")):
+    fields = [("Action", "action"), ("Metric", "metric"), ("Impact", "impact")]
+    if layout == "impact_first":
+        fields = [fields[2], fields[0], fields[1]]
+    for heading, field in fields:
+        if layout == "compact":
+            paragraph = document.add_paragraph()
+            paragraph.add_run(f"{heading}: ").bold = True
+            paragraph.add_run(str(snapshot.get(field) or "[Not provided]"))
+            continue
         document.add_heading(heading, level=2)
         document.add_paragraph(str(snapshot.get(field) or "[Not provided]"))
     supporting_narrative = str(snapshot.get("supporting_narrative") or "")
@@ -21,7 +31,11 @@ def _add_record(document: WordDocument, snapshot: dict[str, object]) -> None:
 
 
 def _build_document(
-    title: str, report_type: str, snapshots: list[dict[str, object]], template_content: str
+    title: str,
+    report_type: str,
+    snapshots: list[dict[str, object]],
+    template_content: str,
+    layout: str = "detailed",
 ) -> WordDocument:
     document = Document()
     document.sections[0].top_margin = Inches(0.75)
@@ -34,7 +48,7 @@ def _build_document(
         document.add_heading("Report notes", level=1)
         document.add_paragraph(template_content)
     for snapshot in snapshots:
-        _add_record(document, snapshot)
+        _add_record(document, snapshot, layout)
     return document
 
 
@@ -52,6 +66,7 @@ def generate_docx(
     template_id: str = "",
     template_content: str = "",
     output_filename: str = "",
+    layout: str = "detailed",
 ) -> Report:
     report = Report(
         title=title,
@@ -60,6 +75,7 @@ def generate_docx(
             "template_id": template_id,
             "template_content": template_content,
             "output_filename": output_filename,
+            "layout": layout,
         },
     )
     session.add(report)
@@ -83,7 +99,7 @@ def generate_docx(
             )
         )
     output = get_settings().data_dir / "reports" / f"{_safe_name(title)}-{report.id[:8]}.docx"
-    _build_document(title, report_type, snapshots, template_content).save(str(output))
+    _build_document(title, report_type, snapshots, template_content, layout).save(str(output))
     report.output_path = str(output)
     session.add(
         AuditEvent(
@@ -100,9 +116,13 @@ def regenerate_docx(session: Session, report: Report, items: list[ReportItem]) -
     filters = report.filters if isinstance(report.filters, dict) else {}
     template_content = str(filters.get("template_content") or "")
     snapshots = [item.source_snapshot for item in items]
-    _build_document(report.title, report.report_type, snapshots, template_content).save(
-        report.output_path
-    )
+    _build_document(
+        report.title,
+        report.report_type,
+        snapshots,
+        template_content,
+        str(filters.get("layout") or "detailed"),
+    ).save(report.output_path)
     session.add(
         AuditEvent(
             event_type="report.regenerated",

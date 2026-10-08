@@ -93,6 +93,10 @@ try:
         page.get_by_label("Password", exact=True).fill("isolated review password")
         page.get_by_role("button", name="Sign in", exact=True).click()
         page.wait_for_url("**/dashboard")
+        # Exercise the server fallback without opening OS windows in headless tests.
+        page.route(
+            "**/files/picker-capabilities", lambda route: route.fulfill(json={"native": False})
+        )
         # Browse only selects paths; it must never submit either parent form.
         fixture_repo = Path(data_dir) / "browse-repository"
         fixture_repo.mkdir()
@@ -139,6 +143,44 @@ try:
         expect(page.get_by_role("button", name="Browse files", exact=True)).to_be_focused()
         expect(page.get_by_label("Local ODT source path")).to_have_value(str(fixture_source))
         assert fixture_source.read_bytes() == b"read-only picker fixture"
+        page.unroute("**/files/picker-capabilities")
+        page.route(
+            "**/files/picker-capabilities", lambda route: route.fulfill(json={"native": True})
+        )
+
+        def native_selection(route):
+            from urllib.parse import parse_qs
+
+            submitted = parse_qs(route.request.post_data)
+            kind = submitted["kind"][0]
+            route.fulfill(
+                json={
+                    "selected": {
+                        "repository": str(fixture_repo.resolve()),
+                        "subdirectory": "exports",
+                        "odt": str(fixture_source),
+                    }[kind]
+                }
+            )
+
+        page.route("**/files/pick-native", native_selection)
+        page.goto(base + "/exports")
+        page.locator('[data-browse="repository"]').click()
+        expect(page.get_by_label("Repository path", exact=True)).to_have_value(
+            str(fixture_repo.resolve())
+        )
+        expect(page.locator(".file-browser")).not_to_be_visible()
+        page.locator('[data-browse="subdirectory"]').click()
+        expect(page.get_by_label("Export subdirectory", exact=True)).to_have_value("exports")
+        page.goto(base + "/imports")
+        page.get_by_role("button", name="Browse files", exact=True).click()
+        expect(page.get_by_label("Local ODT source path")).to_have_value(str(fixture_source))
+        expect(page.locator(".file-browser")).not_to_be_visible()
+        page.unroute("**/files/pick-native")
+        page.route("**/files/pick-native", lambda route: route.fulfill(json={"canceled": True}))
+        page.get_by_role("button", name="Browse files", exact=True).click()
+        expect(page.locator("[data-native-status]")).to_contain_text("Canceled")
+        expect(page.get_by_label("Local ODT source path")).to_have_value(str(fixture_source))
         page.set_viewport_size({"width": 1440, "height": 1000})
         results["interactions"].append(
             "Repository picker, relative export folder, ODT filtering/selection, cancellation and focus restoration; no automatic submissions"
@@ -319,9 +361,25 @@ try:
         page.get_by_label("Project name").fill("Service reliability")
         page.get_by_label("Description", exact=True).fill("Make routine work more dependable.")
         page.get_by_role("button", name="Create project").click()
-        assert page.get_by_role("cell", name="Service reliability", exact=True).is_visible()
+        expect(page.get_by_role("cell", name="Service reliability", exact=True)).to_be_visible()
         page.goto(base + "/reports")
         expect(page.locator('input[name="record_ids"]').first).to_be_checked()
+        for starter in [
+            "Executive Summary",
+            "Monthly Update",
+            "Quarterly Review",
+            "Annual Self-Assessment",
+            "Promotion Evidence",
+            "Project Closeout",
+            "Security & Compliance",
+            "Technical Operations",
+        ]:
+            expect(page.locator("#report-template option").filter(has_text=starter)).to_have_count(
+                1
+            )
+        page.locator("#report-template").select_option(label="Executive Summary")
+        expect(page.get_by_label("Report layout", exact=True)).to_have_value("impact_first")
+        page.locator("#report-template").select_option("")
         expect(page.locator("#report-selection-count")).to_contain_text("1 selected of 1")
         page.locator('input[name="record_ids"]').first.uncheck()
         page.get_by_label("Report title", exact=True).fill("Template title")
