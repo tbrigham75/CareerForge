@@ -84,6 +84,7 @@ def context(request: Request, **values: object) -> dict[str, object]:
         "request": request,
         "csrf_token": csrf_token(request),
         "user_id": request.session.get("user_id"),
+        "max_attachment_bytes": settings.max_attachment_bytes,
         **values,
     }
 
@@ -448,7 +449,7 @@ async def assist_capture(
 
 
 @app.post("/capture")
-def capture(
+async def capture(
     request: Request,
     session: SessionDependency,
     csrf: Annotated[str, Form()],
@@ -469,9 +470,12 @@ def capture(
     action_choice: Annotated[str, Form()] = "raw",
     provider_id: Annotated[str, Form()] = "",
     project_id: Annotated[str, Form()] = "",
+    attachment: UploadFile | None = None,
     _: User = Depends(current_user),
 ):
     require_csrf(request, csrf)
+    submitted = await request.form()
+    form_values = {key: value for key, value in submitted.items() if isinstance(value, str)}
     if not any((raw_note.strip(), action.strip(), metric.strip(), impact.strip())):
         providers = list(session.scalars(select(AIProvider).where(AIProvider.enabled.is_(True))))
         projects = list(session.scalars(select(Project).order_by(Project.name)))
@@ -482,6 +486,7 @@ def capture(
                 providers=providers,
                 projects=projects,
                 record=None,
+                form_values=form_values,
                 error="Enter a raw note or accomplishment content.",
             ),
             status_code=400,
@@ -512,10 +517,48 @@ def capture(
         projects = list(session.scalars(select(Project).order_by(Project.name)))
         return templates.TemplateResponse(
             "capture.html",
-            context(request, providers=providers, projects=projects, record=None, error=str(exc)),
+            context(
+                request,
+                providers=providers,
+                projects=projects,
+                record=None,
+                form_values=form_values,
+                error=str(exc),
+            ),
             status_code=400,
         )
-    record = accomplishments.create(session, data)
+    content = None
+    if attachment and attachment.filename:
+        try:
+            content = await read_attachment(attachment)
+        except HTTPException as exc:
+            return templates.TemplateResponse(
+                "capture.html",
+                context(
+                    request,
+                    providers=list(
+                        session.scalars(select(AIProvider).where(AIProvider.enabled.is_(True)))
+                    ),
+                    projects=list(session.scalars(select(Project).order_by(Project.name))),
+                    record=None,
+                    form_values=form_values,
+                    error=f"{exc.detail} Your text is preserved. Choose another file or clear the selection and save again.",
+                ),
+                status_code=exc.status_code,
+            )
+    record = accomplishments.create(session, data, commit=False)
+    stored = None
+    try:
+        if content is not None and attachment:
+            stored = store_attachment(
+                session, record, attachment.filename or "attachment", content, sensitivity
+            )
+        session.commit()
+    except Exception:
+        session.rollback()
+        if stored:
+            stored.unlink(missing_ok=True)
+        raise
     if project_id:
         project = session.get(Project, project_id)
         if project:
@@ -822,13 +865,34 @@ async def upload_attachment(
         "do_not_sync",
     }:
         raise HTTPException(status_code=400, detail="Unsupported attachment sensitivity.")
-    original_name = Path(attachment.filename or "attachment").name
-    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", original_name).strip(".-") or "attachment"
+    content = await read_attachment(attachment)
+    stored = store_attachment(
+        session, record, attachment.filename or "attachment", content, sensitivity
+    )
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        if stored:
+            stored.unlink(missing_ok=True)
+        raise
+    return redirect(f"/accomplishments/{record.id}")
+
+
+async def read_attachment(attachment: UploadFile) -> bytes:
     content = await attachment.read(settings.max_attachment_bytes + 1)
     if not content:
         raise HTTPException(status_code=400, detail="Attachment is empty.")
     if len(content) > settings.max_attachment_bytes:
         raise HTTPException(status_code=413, detail="Attachment exceeds the configured size limit.")
+    return content
+
+
+def store_attachment(
+    session: Session, record: Accomplishment, filename: str, content: bytes, sensitivity: str
+) -> Path | None:
+    original_name = Path(filename.replace("\\", "/")).name[:300] or "attachment"
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", original_name).strip(".-")[:160] or "attachment"
     content_hash = hashlib.sha256(content).hexdigest()
     existing = session.scalar(
         select(AttachmentMetadata).where(
@@ -837,11 +901,10 @@ async def upload_attachment(
         )
     )
     if existing:
-        return redirect(f"/accomplishments/{record.id}")
+        return None
     storage = settings.data_dir / "attachments" / record.id
     storage.mkdir(parents=True, exist_ok=True)
     stored = storage / f"{content_hash[:16]}-{safe_stem}"
-    stored.write_bytes(content)
     metadata = AttachmentMetadata(
         accomplishment_id=record.id,
         original_filename=original_name,
@@ -850,6 +913,7 @@ async def upload_attachment(
         sensitivity=sensitivity,
     )
     session.add(metadata)
+    session.flush()
     session.add(
         AuditEvent(
             event_type="attachment.uploaded",
@@ -860,8 +924,12 @@ async def upload_attachment(
             },
         )
     )
-    session.commit()
-    return redirect(f"/accomplishments/{record.id}")
+    try:
+        stored.write_bytes(content)
+    except OSError:
+        stored.unlink(missing_ok=True)
+        raise
+    return stored
 
 
 @app.get("/attachments/{attachment_id}/download")

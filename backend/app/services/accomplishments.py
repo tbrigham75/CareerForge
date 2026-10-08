@@ -48,7 +48,7 @@ def record_revision(session: Session, record: Accomplishment, reason: str) -> No
     session.flush()
 
 
-def create(session: Session, data: AccomplishmentInput) -> Accomplishment:
+def create(session: Session, data: AccomplishmentInput, *, commit: bool = True) -> Accomplishment:
     title = data.title.strip() or (
         data.raw_note.strip()[:100] if data.raw_note else "Untitled accomplishment"
     )
@@ -59,8 +59,9 @@ def create(session: Session, data: AccomplishmentInput) -> Accomplishment:
     session.flush()
     record_revision(session, record, "created")
     session.add(AuditEvent(event_type="accomplishment.created", metadata_json={"id": record.id}))
-    session.commit()
-    session.refresh(record)
+    if commit:
+        session.commit()
+        session.refresh(record)
     return record
 
 

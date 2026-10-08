@@ -56,7 +56,7 @@ try:
         except OSError:
             time.sleep(0.1)
     with sync_playwright() as p:
-        browser = p.chromium.launch(channel="msedge", headless=True)
+        browser = p.chromium.launch(channel="msedge", headless=True, args=["--no-proxy-server"])
         context = browser.new_context(viewport={"width": 1440, "height": 1000})
         page = context.new_page()
         page.on("pageerror", lambda error: results["errors"].append(str(error)))
@@ -281,9 +281,21 @@ try:
         page.get_by_label("Title", exact=True).fill("Made weekly service checks repeatable")
         page.get_by_label("Start date", exact=True).fill("2026-10-01")
         page.get_by_label("Completion date", exact=True).fill("2026-10-07")
+        page.get_by_label("Browse computer for a document", exact=True).set_input_files(
+            {"name": "assessment.txt", "mimeType": "text/plain", "buffer": b"Reviewed 24 settings."}
+        )
+        expect(page.locator("#supporting-document-status")).to_contain_text("assessment.txt")
+        page.get_by_role("button", name="Clear file selection", exact=True).click()
+        expect(page.locator("#supporting-document-status")).to_have_text("No document selected.")
+        page.get_by_label("Browse computer for a document", exact=True).set_input_files(
+            {"name": "assessment.txt", "mimeType": "text/plain", "buffer": b"Reviewed 24 settings."}
+        )
         page.get_by_role("button", name="Save Completed Accomplishment").click()
         page.wait_for_url("**/accomplishments/*")
         record_url = page.url
+        with page.expect_download() as evidence_download:
+            page.get_by_role("link", name="assessment.txt", exact=True).click()
+        assert evidence_download.value.suggested_filename == "assessment.txt"
         assert page.get_by_role(
             "heading", name="Made weekly service checks repeatable"
         ).is_visible()

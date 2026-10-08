@@ -2,7 +2,7 @@
 {% block content %}
 <p class="eyebrow">Capture your impact</p><h1>I Did This</h1>
 <p class="notice">Save a factual raw note without AI, or create a completed manual accomplishment. AI drafts require your review and approval.</p>
-<form action="/capture" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><div class="grid">
+<form action="/capture" method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{ csrf_token }}"><div class="grid">
 <div class="wide"><h2>Start with the facts</h2><label>What did you do?<textarea name="raw_note" placeholder="Example: I patched four Linux servers affected by a critical vulnerability and verified the services afterward.">{{ record.raw_note if record else '' }}</textarea></label>
 <div class="ai-assistance">{% if providers %}<label>AI provider<select name="provider_id">{% for provider in providers %}<option value="{{ provider.id }}">{{ provider.display_name }} — {{ provider.default_model or 'Set a default model' }}</option>{% endfor %}</select></label><button type="button" id="assist-capture">Help me fill this out</button><p class="muted">Suggests a title, context, Action, Metric and Impact from your note. Review before saving. Missing facts are flagged, never invented.</p>{% else %}<p class="notice">To get AI help filling out this form, set up an AI provider first. <a href="/providers" target="_blank" rel="noopener">Set up AI Provider (opens a new tab)</a>. Return here and reload after setup; save your raw note first if you have started writing.</p>{% endif %}<p id="assist-status" role="status"></p><div id="assist-results"></div></div></div>
 <label>Title<input name="title" value="{{ record.title if record else '' }}"></label>
@@ -11,8 +11,28 @@
 <div class="wide form-section"><h2>Context &amp; organization</h2><p class="muted">Add the details that will help you find this work later.</p></div><label>Sensitivity<select name="sensitivity"><option value="private_personal">Private personal</option><option value="public_safe">Public safe</option><option value="internal">Internal</option><option value="confidential">Confidential</option><option value="do_not_sync">Do not sync</option></select></label>
 <label>Systems / services (comma-separated)<input name="systems"></label><label>Technologies (comma-separated)<input name="technologies"></label><label>Tags (comma-separated)<input name="tags"></label><label>Categories (comma-separated)<input name="categories"></label>
 <div class="wide form-section"><h2>Shape the accomplishment</h2><p class="muted">Optional for a raw note. Describe what you did, the measurable result, and why it mattered.</p></div><label class="wide">Action<textarea name="action"></textarea></label><label>Metric<textarea name="metric"></textarea></label><label>Impact<textarea name="impact"></textarea></label><label class="wide">Supporting evidence / notes<textarea name="supporting_narrative"></textarea></label><label><input type="checkbox" name="github_export" value="true"> Eligible for Markdown export after approval</label></div>
+<section class="panel" aria-labelledby="supporting-document-heading"><h3 id="supporting-document-heading">Supporting document (optional)</h3><label for="supporting-document">Browse computer for a document</label><input id="supporting-document" type="file" name="attachment" aria-describedby="supporting-document-help"><p id="supporting-document-help" class="muted">Attach a document, spreadsheet, image, or other evidence (up to {{ (max_attachment_bytes / 1048576) | round(1) }} MB). It is stored when you save either a raw note or a completed accomplishment, using the sensitivity selected above. Files stay local: they are not sent to AI or included in Markdown exports. Download this file or add more from the saved accomplishment.</p><button type="button" class="secondary" id="clear-supporting-document">Clear file selection</button><p id="supporting-document-status" role="status"></p></section>
 <p><button name="action_choice" value="raw">Save Raw Note</button><button class="secondary" name="action_choice" value="completed">Save Completed Accomplishment</button></p></form>
 <script>
+  const captureForm = document.querySelector('form[action="/capture"]');
+  const restoredValues = {{ form_values | default({}) | tojson }};
+  for (const [name, value] of Object.entries(restoredValues)) {
+    if (['csrf', 'action_choice'].includes(name)) continue;
+    const control = captureForm.elements.namedItem(name);
+    if (!control || control.type === 'file') continue;
+    if (control.type === 'checkbox') control.checked = value === 'true';
+    else control.value = value;
+  }
+  const documentInput = document.querySelector('#supporting-document');
+  const documentStatus = document.querySelector('#supporting-document-status');
+  function checkDocument() {
+    const file = documentInput.files[0];
+    const error = file && (file.size === 0 ? 'The selected file is empty.' : file.size > {{ max_attachment_bytes }} ? 'The selected file exceeds the size limit.' : '');
+    documentInput.setCustomValidity(error || '');
+    documentStatus.textContent = error || (file ? `${file.name} will be attached when you save.` : 'No document selected.');
+  }
+  documentInput.addEventListener('change', checkDocument);
+  document.querySelector('#clear-supporting-document').addEventListener('click', () => { documentInput.value = ''; checkDocument(); documentInput.focus(); });
   const startDate = document.querySelector("#date_started");
   const completionDate = document.querySelector("#date_completed");
 

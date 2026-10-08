@@ -96,7 +96,12 @@ def test_capture_rejects_start_date_after_completion(logged_in):
     assert response.status_code == 400
     assert "Start date must be on or before completion date." in response.text
     with SessionLocal() as session:
-        assert session.scalar(select(Accomplishment).where(Accomplishment.title == "Invalid date order")) is None
+        assert (
+            session.scalar(
+                select(Accomplishment).where(Accomplishment.title == "Invalid date order")
+            )
+            is None
+        )
 
 
 def test_project_link_and_evidence(logged_in):
@@ -161,3 +166,69 @@ def test_local_attachment_upload_and_authenticated_download(logged_in):
     attachment_id = re.search(r"/attachments/([^/]+)/download", detail.text).group(1)
     download = logged_in.get(f"/attachments/{attachment_id}/download")
     assert download.content == b"validated locally"
+
+
+def test_capture_with_supporting_document(logged_in):
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import AttachmentMetadata
+
+    for choice in ("raw", "completed"):
+        response = logged_in.post(
+            "/capture",
+            data={
+                "csrf": token(logged_in),
+                "raw_note": "Reviewed security settings.",
+                "supporting_narrative": "See the assessment.",
+                "sensitivity": "confidential",
+                "action_choice": choice,
+            },
+            files={"attachment": ("../assessment.txt", b"24 settings reviewed", "text/plain")},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        detail = logged_in.get(response.headers["location"])
+        assert "See the assessment." in detail.text
+        attachment_id = re.search(r"/attachments/([^/]+)/download", detail.text).group(1)
+        download = logged_in.get(f"/attachments/{attachment_id}/download")
+        assert download.content == b"24 settings reviewed"
+        assert "attachment;" in download.headers["content-disposition"]
+        with SessionLocal() as session:
+            metadata = session.scalar(
+                select(AttachmentMetadata).where(AttachmentMetadata.id == attachment_id)
+            )
+            assert metadata.original_filename == "assessment.txt"
+            assert metadata.sensitivity == "confidential"
+    logged_in.cookies.clear()
+    assert (
+        logged_in.get(f"/attachments/{attachment_id}/download", follow_redirects=False).status_code
+        == 303
+    )
+
+
+def test_capture_rejects_invalid_document_without_partial_record(logged_in, monkeypatch):
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.main import settings
+    from app.models import Accomplishment
+
+    monkeypatch.setattr(settings, "max_attachment_bytes", 4)
+    for content, expected in ((b"", 400), (b"too large", 413)):
+        response = logged_in.post(
+            "/capture",
+            data={
+                "csrf": token(logged_in),
+                "raw_note": "Keep my note",
+                "metric": "24 settings",
+                "action_choice": "raw",
+            },
+            files={"attachment": ("evidence.txt", content, "text/plain")},
+        )
+        assert response.status_code == expected
+        assert "Keep my note" in response.text
+        assert "24 settings" in response.text
+        assert "Your text is preserved" in response.text
+        with SessionLocal() as session:
+            assert session.scalar(select(func.count()).select_from(Accomplishment)) == 0
