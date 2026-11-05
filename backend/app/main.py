@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
+from sqlalchemy import update as sql_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
@@ -1675,6 +1676,8 @@ def approve_ai_draft(
     draft = session.get(AIDraft, draft_id)
     if not draft or draft.accomplishment_id != record.id:
         raise HTTPException(status_code=404, detail="Draft not found.")
+    if draft.content.get("review_version"):
+        raise HTTPException(400, "Use the selective AI review panel for this draft.")
     for field in (
         "title",
         "action",
@@ -2467,3 +2470,150 @@ def import_odt_source(
             message=f"Import status: {run.status}; records added: {run.imported_count}.",
         ),
     )
+
+
+@app.post("/accomplishments/{record_id}/ai-review")
+async def ai_review(record_id: str, request: Request, session: SessionDependency, _: User = Depends(current_user)):
+    data = await request.json()
+    require_csrf(request, data.get("csrf", ""))
+    record = get_record(session, record_id)
+    fields = ("action", "metric", "impact")
+    def baseline():
+        return {key: getattr(record, key) for key in (*fields, "raw_note")}
+    def clean(values):
+        if not isinstance(values, dict) or any(key not in fields or not isinstance(value, str) or len(value) > 20000 for key, value in values.items()):
+            raise HTTPException(400, "Invalid suggestion fields.")
+        return values
+    operation = data.get("operation")
+    draft = session.get(AIDraft, data.get("draft_id", ""))
+    if operation == "load":
+        providers = [{"id": p.id, "name": p.display_name, "model": p.default_model} for p in session.scalars(select(AIProvider).where(AIProvider.enabled.is_(True)))]
+        drafts = [d for d in session.scalars(select(AIDraft).where(AIDraft.accomplishment_id == record.id).order_by(AIDraft.created_at.desc())) if d.content.get("review_version") == 1 and d.status in {"review_required", "accepted"}]
+        return {"providers": providers, "current": baseline(), "drafts": [{"id": d.id, "status": d.status, "content": d.content} for d in drafts]}
+    if operation != "generate":
+        if not draft or draft.accomplishment_id != record.id or draft.content.get("review_version") != 1:
+            raise HTTPException(404, "Review draft not found.")
+        if draft.status != ("accepted" if operation == "undo" else "review_required"):
+            raise HTTPException(409, "This draft has already been applied or discarded.")
+    if operation in {"generate", "refine"}:
+        provider = session.get(AIProvider, data.get("provider_id"))
+        if not provider or not provider.enabled or not provider.default_model:
+            raise HTTPException(400, "Choose an enabled provider with a model.")
+        if not record.raw_note.strip():
+            raise HTTPException(400, "Add an original raw note first.")
+        target = data.get("field", "")
+        if operation == "refine" and target not in fields:
+            raise HTTPException(400, "Choose Action, Metric, or Impact.")
+        answer = data.get("answer", "")
+        if not isinstance(answer, str) or len(answer) > 10000:
+            raise HTTPException(400, "Keep answers under 10,000 characters.")
+        if operation == "refine" and answer.rstrip().endswith("Confirmed amount or scope:"):
+            raise HTTPException(400, "Add the amount or scope you can confirm after the measurement idea.")
+        if operation == "refine":
+            assert draft is not None
+        content = dict(draft.content) if draft is not None and operation == "refine" else {"review_version": 1, "baseline": baseline(), "baseline_time": record.updated_at.isoformat(), "answers": {}, "dismissed": [], "include_context": bool(data.get("include_context"))}
+        if operation == "refine":
+            content["suggestions"] = clean(data.get("suggestions", {}))
+            content["answers"] = {**content["answers"], **({target: answer} if answer.strip() else {})}
+        metadata = {"follow_up_answers": json.dumps(content["answers"]), "remote_confirmation": bool(data.get("remote_confirmation"))}
+        if content["include_context"]:
+            metadata["existing_fields"] = {key: getattr(record, key) for key in fields}
+        if target and answer.strip():
+            metadata["target_field"] = target
+        if classify_and_validate_url(provider.base_url) == "remote" and not metadata["remote_confirmation"]:
+            return {"confirmation_required": True, "transmission": {"raw_note": record.raw_note, **metadata}}
+        raw = record.raw_note
+        provider_key, model_name = provider.id, provider.default_model
+        session.expunge(provider)
+        session.rollback()
+        try:
+            result = await generate_draft(provider, raw, metadata)
+        except Exception as exc:
+            raise HTTPException(502, "AI assistance failed. Your saved record and draft are preserved; retry when the provider is available.") from exc
+        suggestions = dict(content.get("suggestions", {}))
+        questions = dict(content.get("questions", {}))
+        for field in ((target,) if target else fields):
+            value = getattr(result, field).strip()
+            if re.search(r"^\[.*\]$|^not provided$|^more information needed$", value, re.I):
+                value = ""
+            if len(value) > 20000:
+                raise HTTPException(502, "AI suggestion is too long. Please retry.")
+            suggestions[field] = value
+            questions[field] = getattr(result, field + "_question", "") or (f"What {field} can you confirm?" if not value else "")
+        starting_fields = []
+        for field in ("metric", "impact"):
+            if (not target or target == field) and not suggestions.get(field):
+                focused_metadata = {k: v for k, v in metadata.items() if k != "target_field"}
+                focused_metadata["brainstorm_field"] = field
+                try:
+                    focused = await generate_draft(provider, raw, focused_metadata)
+                except Exception as exc:
+                    raise HTTPException(502, f"AI could not produce a {field} starting point. Your saved record and draft are preserved; please retry.") from exc
+                value = getattr(focused, field).strip()
+                if not value or re.fullmatch(r"\[.*\]", value) or len(value) > 20000:
+                    raise HTTPException(502, f"AI returned no usable {field} starting point. Please retry.")
+                suggestions[field] = value
+                setattr(result, field + "_suggestions", getattr(focused, field + "_suggestions") or [value])
+                questions[field] = "Edit this starting point to match your experience. Replace or remove any bracketed details before applying."
+                starting_fields.append(field)
+        for idea_field in ("metric", "impact"):
+            if not target or target == idea_field:
+                key = idea_field + "_suggestions"
+                content[key] = [idea.strip()[:250] for idea in getattr(result, key) if idea.strip()][:5] or content.get(key) or (
+                    ["Completed this work across [confirmed scope].", "Contributed to this work over [time period].", "Performed this work [frequency] for [confirmed scope]."]
+                    if idea_field == "metric" else
+                    ["Supported [team or system] by [contribution described in the note].", "Helped [people affected] with [confirmed benefit].", "Provided a basis for [decision or next step] through this work."]
+                )
+        content.update(suggestions=suggestions, questions=questions, provider_id=provider_key, model_name=model_name, starting_fields=starting_fields)
+        content["pending_answers"] = clean(data.get("pending_answers", {}))
+        content["dismissed"] = [f for f in data.get("dismissed", []) if f in fields]
+        sources = [line.strip() for line in raw.splitlines() if line.strip()] + list(content["answers"].values())
+        content["sources"] = {f: [line for line in sources if set(re.findall(r"\w{4,}", line.lower())) & set(re.findall(r"\w{4,}", suggestions[f].lower()))] for f in fields}
+        content["selected"] = data.get("selected", [f for f in fields if not content["baseline"][f] and suggestions[f] and f not in starting_fields])
+        if operation == "generate":
+            draft = AIDraft(accomplishment_id=record_id, provider_id=provider_key, model_name=model_name, content=content)
+            session.add(draft)
+        else:
+            assert draft is not None
+            draft.content = content
+        session.commit()
+        return {"id": draft.id, "content": content}
+    assert draft is not None
+    content = dict(draft.content)
+    if operation == "discard":
+        draft.status = "discarded"
+    elif operation == "save_draft":
+        content["suggestions"] = clean(data.get("suggestions", {}))
+        content["selected"] = [f for f in data.get("selected", []) if f in fields]
+        content["dismissed"] = [f for f in data.get("dismissed", []) if f in fields]
+        content["pending_answers"] = clean(data.get("pending_answers", {}))
+        draft.content = content
+    elif operation in {"apply", "undo"}:
+        values = content["before"] if operation == "undo" else clean(data.get("suggestions", {}))
+        selected = list(values) if operation == "undo" else data.get("selected", [])
+        if not isinstance(selected, list) or any(f not in fields for f in selected):
+            raise HTTPException(400, "Select valid fields.")
+        expected = content["after_time"] if operation == "undo" else content["baseline_time"]
+        if record.updated_at.isoformat() != expected:
+            raise HTTPException(409, "The record changed. Your draft is preserved. Review the latest record before generating a fresh draft.")
+        changes = {f: values[f] for f in selected if f in values and (values[f].strip() or operation == "undo") and values[f] != getattr(record, f)}
+        if operation == "apply" and any(re.search(r"\[[^\]]+\]", value) for value in changes.values()):
+            raise HTTPException(400, "Replace or remove the bracketed placeholders in selected suggestions before applying. You can save the AI draft while you think about them.")
+        if not changes:
+            return {"message": "No changes to save."}
+        before = {f: getattr(record, f) for f in changes}
+        now = datetime.now(UTC)
+        saved_result = session.execute(sql_update(Accomplishment).where(Accomplishment.id == record.id, Accomplishment.updated_at == record.updated_at, Accomplishment.deleted_at.is_(None)).values(**changes, updated_at=now))
+        if saved_result.rowcount != 1:
+            session.rollback()
+            raise HTTPException(409, "The record changed. Refresh and review your draft.")
+        session.refresh(record)
+        accomplishments.record_revision(session, record, "ai_review_undone" if operation == "undo" else "ai_review_saved")
+        session.add(AuditEvent(event_type="ai.review." + operation, metadata_json={"record_id": record.id, "draft_id": draft.id, "fields": list(changes)}))
+        content.update(before=before, after_time=record.updated_at.isoformat(), suggestions=values)
+        draft.content = content
+        draft.status = "undone" if operation == "undo" else "accepted"
+    else:
+        raise HTTPException(400, "Unknown review action.")
+    session.commit()
+    return {"message": "Changes undone." if operation == "undo" else "Saved.", "current": baseline(), "status": draft.status}

@@ -1,8 +1,40 @@
-INFO:     127.0.0.1:49387 - "GET / HTTP/1.1" 303 See Other
-INFO:     127.0.0.1:49387 - "GET /login HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54950 - "GET /capture HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54950 - "GET /taxonomy/suggestions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54950 - "GET /accomplishments HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53677 - "GET /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf HTTP/1.1" 200 OK
-INFO:     127.0.0.1:61757 - "GET /accomplishments HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49367 - "GET /accomplishments/db238105-dcb3-40a1-aed7-1b1cf451a9b4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53598 - "GET / HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:53598 - "GET /login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /static/ai-review.js?v=3 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:58658 - "GET /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /static/theme.js?v=20261007b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57098 - "GET /static/app.css?v=20261008-reporting-year HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /static/ai-review.js?v=3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57098 - "GET /static/app.js?v=20261008-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57098 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57098 - "GET /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57098 - "GET /static/theme.js?v=20261007b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /static/app.css?v=20261008-reporting-year HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57098 - "GET /static/ai-review.js?v=3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /static/app.js?v=20261008-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58658 - "GET /capture HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /taxonomy/suggestions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /accomplishments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59283 - "POST /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf/ai-review HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59283 - "POST /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf/ai-review HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58854 - "GET /accomplishments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58854 - "GET /capture HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58854 - "GET /taxonomy/suggestions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58854 - "GET /accomplishments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58854 - "GET /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64333 - "GET /projects HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:64333 - "GET /login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61452 - "POST /login HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:61452 - "GET /dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51156 - "GET /accomplishments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51156 - "GET /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51156 - "GET /static/ai-review.js?v=3 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51156 - "GET /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf/edit HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51156 - "GET /taxonomy/suggestions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52992 - "POST /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf/edit HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:52992 - "GET /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52992 - "POST /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf/ai-review HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52992 - "POST /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf/ai-review HTTP/1.1" 200 OK

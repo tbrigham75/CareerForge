@@ -157,3 +157,39 @@ def test_legacy_word_reimport_replaces_only_untouched_fragments(tmp_path):
         assert len(active) == 1
         assert (active[0].action, active[0].metric, active[0].impact) == tuple(values)
         assert import_document(session, source).status == 'skipped_duplicate'
+
+
+def test_reimport_adds_new_rows_and_preserves_edited_raw_note(logged_in, tmp_path):
+    source = tmp_path / "evolving.docx"
+    document = Document()
+    table = document.add_table(rows=1, cols=3)
+    for cell, value in zip(table.rows[0].cells, ["Action", "Metric", "Impact"], strict=True):
+        cell.text = value
+    for cell, value in zip(table.add_row().cells, ["Built a storage tool", "Three systems", "Supported capacity review"], strict=True):
+        cell.text = value
+    document.save(source)
+    data = {"csrf": token(logged_in), "source_path": str(source), "confirmation": "IMPORT"}
+    assert "records added: 1" in logged_in.post("/imports/document", data=data).text
+    with SessionLocal() as session:
+        record = session.scalar(select(Accomplishment))
+        rid, fingerprint = record.id, record.source_hash
+    edited = "Built a storage tool to investigate PBS capacity and help plan cleanup."
+    response = logged_in.post(f"/accomplishments/{rid}/edit", data={
+        "csrf": token(logged_in), "title": "Storage review", "raw_note": edited,
+        "action": "Built a storage tool", "metric": "Three systems", "impact": "Supported capacity review",
+        "status": "raw_note", "sensitivity": "internal", "approval_status": "draft",
+    })
+    assert response.status_code == 200
+    assert "skipped_duplicate" in logged_in.post("/imports/document", data=data).text
+    for cell, value in zip(table.add_row().cells, ["Reviewed backup jobs", "Five jobs", "Identified failed backups"], strict=True):
+        cell.text = value
+    document.save(source)
+    assert "records added: 1" in logged_in.post("/imports/document", data=data).text
+    with SessionLocal() as session:
+        records = list(session.scalars(select(Accomplishment)))
+        assert len(records) == 2
+        record = session.get(Accomplishment, rid)
+        assert record.raw_note == edited
+        assert record.source_hash == fingerprint
+        assert len(record.revisions) == 2
+        assert record.revisions[0].snapshot["raw_note"] != edited

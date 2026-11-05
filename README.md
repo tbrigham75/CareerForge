@@ -46,3 +46,7 @@ Screenshot placeholders will be stored in `docs/images/` when a stable UI releas
 ## Document imports
 
 Imports accepts OpenDocument (.odt) and Microsoft Word (.docx) files, including table text. Text is saved as raw notes for review; identical sources are skipped. Save older .doc files as .docx in Word first. Source files are never modified.
+
+## AI review on accomplishments
+
+Use Help with Action, Metric & Impact beside the original note. Generate editable suggestions, answer field-specific questions, save an AI draft to resume later, and select which fields to apply. Existing populated fields start unselected. Source excerpts are context for human review, not factual verification. Save Selected Changes creates one revision; Undo These Changes creates a restoring revision and refuses to overwrite newer edits. Original notes and record status are preserved. No database migration is required.
