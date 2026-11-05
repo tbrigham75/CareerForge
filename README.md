@@ -42,3 +42,7 @@ repository. The reference `Tom's Brag Sheet.odt` remains local and is intentiona
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 
 Screenshot placeholders will be stored in `docs/images/` when a stable UI release is available.
+
+## Document imports
+
+Imports accepts OpenDocument (.odt) and Microsoft Word (.docx) files, including table text. Text is saved as raw notes for review; identical sources are skipped. Save older .doc files as .docx in Word first. Source files are never modified.

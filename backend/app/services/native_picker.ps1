@@ -55,7 +55,7 @@ public static class CareerForgePicker {
             dialog.SetOptions(options | 0x40u | 0x800u | 0x1000u | 0x02000000u | (folder ? 0x20u : 0u));
             dialog.SetTitle(title);
             dialog.SetOkButtonLabel(folder ? "Select folder" : "Select document");
-            if (!folder) dialog.SetFileTypes(1, new Filter[] { new Filter { Name="OpenDocument Text (*.odt)", Spec="*.odt" } });
+            if (!folder) dialog.SetFileTypes(1, new Filter[] { new Filter { Name="Word and OpenDocument (*.docx; *.odt)", Spec="*.docx;*.odt" } });
             if (!String.IsNullOrEmpty(initial)) {
                 Guid iid = new Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"); IShellItem start;
                 SHCreateItemFromParsingName(initial, IntPtr.Zero, ref iid, out start);

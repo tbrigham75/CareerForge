@@ -147,7 +147,7 @@
     entries.replaceChildren(); location.value = ''; drives.replaceChildren();
     useFolder.hidden = kind === 'odt';
     useFile.hidden = kind !== 'odt'; selectedFile = null; hidden.checked = false;
-    dialog.querySelector('#browser-title').textContent = {repository: 'Choose a Git repository', subdirectory: 'Choose an export folder', odt: 'Choose an ODT document'}[kind];
+    dialog.querySelector('#browser-title').textContent = {repository: 'Choose a Git repository', subdirectory: 'Choose an export folder', odt: 'Choose an ODT or Word document'}[kind];
     dialog.showModal();
     if (kind === 'subdirectory' && !repository) {
       message('Choose or enter a repository folder first.', true);

@@ -76,7 +76,7 @@ from app.services.ai import (
 from app.services.backup import BackupError, create_backup, validate_backup_archive
 from app.services.exporter import export_markdown
 from app.services.file_browser import browse_paths
-from app.services.importer import import_odt
+from app.services.importer import import_document
 from app.services.reports import generate_docx, regenerate_docx
 
 settings = get_settings()
@@ -2437,6 +2437,7 @@ def create_local_backup(
     )
 
 
+@app.post("/imports/document")
 @app.post("/imports/odt")
 def import_odt_source(
     request: Request,
@@ -2448,11 +2449,14 @@ def import_odt_source(
 ):
     require_csrf(request, csrf)
     if confirmation != "IMPORT":
-        raise HTTPException(status_code=400, detail="Type IMPORT to read the selected ODT source.")
-    source = Path(source_path).expanduser().resolve()
-    if source.suffix.lower() != ".odt" or not source.is_file():
-        raise HTTPException(status_code=400, detail="Provide an existing local .odt file.")
-    run = import_odt(session, source)
+        raise HTTPException(status_code=400, detail="Type IMPORT to read the selected document.")
+    try:
+        source = native_picker.local_path(source_path)
+        if source.suffix.lower() not in {".odt", ".docx"} or not source.is_file():
+            raise ValueError("Choose an ODT or Word (.docx) file. Save older .doc files as .docx first.")
+        run = import_document(session, source)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return templates.TemplateResponse(
         "imports.html",
         context(

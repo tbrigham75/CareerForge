@@ -1,0 +1,8 @@
+INFO:     127.0.0.1:49387 - "GET / HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:49387 - "GET /login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54950 - "GET /capture HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54950 - "GET /taxonomy/suggestions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54950 - "GET /accomplishments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53677 - "GET /accomplishments/d1258cf7-2edb-47af-ba8e-a2b4cf83d7bf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61757 - "GET /accomplishments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49367 - "GET /accomplishments/db238105-dcb3-40a1-aed7-1b1cf451a9b4 HTTP/1.1" 200 OK

@@ -75,7 +75,7 @@ def choose(kind: str, value: str, repository: str) -> dict:
                     "title": {
                         "repository": "CareerForge - Select Git repository",
                         "subdirectory": "CareerForge - Select export folder inside repository",
-                        "odt": "CareerForge - Select ODT source document",
+                        "odt": "CareerForge - Select ODT or Word source document",
                     }[kind],
                 }
             ),

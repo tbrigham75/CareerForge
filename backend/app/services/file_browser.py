@@ -42,8 +42,8 @@ def browse_paths(
         raise ValueError("Choose a folder inside the selected repository.")
     if select_path:
         if kind == "odt":
-            if not path.is_file() or path.suffix.lower() != ".odt":
-                raise ValueError("Choose an existing .odt document.")
+            if not path.is_file() or path.suffix.lower() not in {".odt", ".docx"}:
+                raise ValueError("Choose an existing ODT or Word (.docx) document.")
         else:
             if not path.is_dir():
                 raise ValueError("Choose an existing folder.")
@@ -67,7 +67,7 @@ def browse_paths(
                     continue
                 folder = resolved.is_dir()
                 if folder or (
-                    kind == "odt" and resolved.is_file() and resolved.suffix.lower() == ".odt"
+                    kind == "odt" and resolved.is_file() and resolved.suffix.lower() in {".odt", ".docx"}
                 ):
                     entries.append({"name": child.name, "path": str(resolved), "folder": folder})
             except (OSError, ValueError, RuntimeError):
