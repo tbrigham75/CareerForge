@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Resume Builder</h1><p>Preserve your original resume and review current-year additions before saving a separate version.</p>
+<form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label>Resume file<input type="file" name="resume" accept=".docx,.odt,.pdf" required></label><p>Up to 25 MB. PDF text is converted to an editable Word baseline; review its layout before updating. Scanned PDFs require a text layer.</p><button>Upload resume</button></form>
+{% for resume in resumes %}<p><a href="/resumes/{{ resume.id }}">{{ resume.name }}</a></p>{% else %}<p>No resumes uploaded yet.</p>{% endfor %}
+{% endblock %}

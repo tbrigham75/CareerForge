@@ -298,3 +298,14 @@ class ReportingSettings(Base):
     start_month: Mapped[int] = mapped_column(Integer, default=1)
     year_naming: Mapped[str] = mapped_column(String(20), default="ending")
     timezone: Mapped[str] = mapped_column(String(100), default="UTC")
+
+
+class Resume(Base):
+    __tablename__ = "resumes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    name: Mapped[str] = mapped_column(String(300))
+    original_path: Mapped[str] = mapped_column(Text)
+    original_hash: Mapped[str] = mapped_column(String(64))
+    state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

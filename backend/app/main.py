@@ -49,6 +49,7 @@ from app.models import (
     ReportTemplate,
     User,
 )
+from app.resume_routes import register as register_resume_routes
 from app.schemas import AccomplishmentInput, AIProviderInput
 from app.security import (
     csrf_token,
@@ -2617,3 +2618,6 @@ async def ai_review(record_id: str, request: Request, session: SessionDependency
         raise HTTPException(400, "Unknown review action.")
     session.commit()
     return {"message": "Changes undone." if operation == "undo" else "Saved.", "current": baseline(), "status": draft.status}
+
+
+register_resume_routes(app, templates, context, current_user)
