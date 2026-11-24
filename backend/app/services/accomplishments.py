@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import String, func, or_, select
 from sqlalchemy.orm import Session
@@ -8,6 +9,23 @@ from sqlalchemy.orm import Session
 from app.models import Accomplishment, AccomplishmentRevision, AuditEvent, Project
 from app.schemas import AccomplishmentInput
 from app.services.taxonomy import register_record
+from app.services import reporting_year
+
+
+def entry_date(session: Session, entered: datetime | None = None) -> date:
+    timestamp = entered or datetime.now(UTC)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return timestamp.astimezone(ZoneInfo(reporting_year.preferences(session).timezone)).date()
+
+
+def default_completion(session: Session, data: AccomplishmentInput, record=None):
+    if data.date_completed is None:
+        data = data.model_copy(update={'date_completed':
+            (record.date_completed or entry_date(session, record.created_at)) if record else entry_date(session)})
+    if data.date_started and data.date_started > data.date_completed:
+        raise ValueError('Start date must be on or before completion date. Completion defaults to the entry date; choose another completion date if needed.')
+    return data
 
 
 def snapshot(record: Accomplishment) -> dict[str, object]:
@@ -19,6 +37,8 @@ def snapshot(record: Accomplishment) -> dict[str, object]:
         "impact": record.impact,
         "supporting_narrative": record.supporting_narrative,
         "status": record.status,
+        "date_started": record.date_started.isoformat() if record.date_started else None,
+        "date_completed": record.date_completed.isoformat() if record.date_completed else None,
         "sensitivity": record.sensitivity,
         "github_export": record.github_export,
         "approval_status": record.approval_status,
@@ -50,6 +70,7 @@ def record_revision(session: Session, record: Accomplishment, reason: str) -> No
 
 
 def create(session: Session, data: AccomplishmentInput, *, commit: bool = True) -> Accomplishment:
+    data = default_completion(session, data)
     title = data.title.strip() or (
         data.raw_note.strip()[:100] if data.raw_note else "Untitled accomplishment"
     )
@@ -70,6 +91,7 @@ def create(session: Session, data: AccomplishmentInput, *, commit: bool = True) 
 def update(
     session: Session, record: Accomplishment, data: AccomplishmentInput, reason: str = "edited"
 ) -> Accomplishment:
+    data = default_completion(session, data, record)
     for field, value in data.model_dump().items():
         setattr(record, field, value)
     if not record.title.strip():

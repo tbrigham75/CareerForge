@@ -1,29 +1,65 @@
 # Resume Builder
 
-Resume Builder appears under Share your progress. Upload DOCX, ODT, or a text-based PDF. The original is saved unchanged under the configured data directory's resumes folder. PDF content is reconstructed into Word paragraphs and requires manual baseline/layout review. Scanned PDFs, encrypted files, and complex Word tables/text boxes are not supported by this initial importer.
+Resume Builder lives under Share your progress. It uses the configured local/private-network Ollama-compatible provider; there is no external AI fallback. Upload DOCX, ODT, or a text-based PDF. Originals and approved versions remain separate, immutable files under the configured data directory's `resumes` folder.
 
-Confirm the current employer/role and paragraph after which new bullets belong. Explicit year-to-year historical date ranges are protected. Ambiguous dates and employer assignments require careful user confirmation; the parser does not understand every international date convention.
+## Accomplishments and suggestions
 
-Update Resume uses the configured local/private-network Ollama-compatible provider. Only approved, completed, report-included, non-deleted accomplishments completed between January 1 and today are considered. This is a calendar-year selection independent of fiscal settings. Sources previously accepted or rejected for that resume are excluded. No attachments are sent. No external AI fallback is used.
+The workspace keeps its live accomplishment inventory visible before and after generation. Four counters distinguish ready sources, records needing review, valid AI recommendation cards, and the user's selected cards. A saved shortlist of one change does not hide other eligible work. A grouped suggestion can cite multiple sources; recommendation counts refer to cards, not distinct accomplishments.
 
-Review source evidence, edit suggestions, save a draft, discard, or approve selected additions. Unchecked suggestions are remembered as rejected when saving. Existing content is retained and each approved update creates a separate downloadable version. Previous versions remain available. Word and ODT retain their native output format; PDFs produce an editable Word baseline. Use Word/LibreOffice for final pagination and PDF export.
+- **Ready:** approved, completed or archived, report-included, non-deleted work dated between January 1 and today in the organization's timezone. This uses the calendar year, independent of the fiscal year. Missing metrics do not exclude qualitative work.
+- **Needs review:** current-year or undated records that fail eligibility, including unfinished notes, missing approval, future dates, report exclusions, or explicit suppression. Notes are never promoted automatically. The list links to each record for review.
+- **Already represented:** sources incorporated into an approved version whose recorded revision has not changed. Changed sources may be reconsidered. An AI opinion that wording already covers a source is separately labeled as an AI assessment in Ready.
 
-The current implementation uses an addition word budget, source identity, normalized text comparisons and AI duplicate instructions. These are not a guarantee of semantic factual verification or exact page length. User review remains essential. Changed sources previously incorporated are not automatically proposed again. Restore an earlier approved version as a new working baseline without deleting later versions. Reconsider previously rejected sources using the dedicated control. Finish or discard a pending proposal first.
+Missing completion dates default to the original entry date. Editing a record later does not make old work current-year work. Migration 0009 backfills non-deleted records, preserving explicit dates and recording conflicts where the start date would exceed the default completion date.
 
-## Installation and validation handoff
+Confirm the current role, insertion point and section boundaries, choose a local provider and a length goal, and optionally nominate accomplishments for extra consideration. A single identifiable current role is prefilled; ambiguous roles require a choice. Job targeting is optional and influences relevance only. Mark critical existing paragraphs Keep.
 
-Install the updated requirements (pypdf was added), then run the normal startup script to apply migration 0008. The running server must be restarted to load these changes. No dependency installation, migration, restart, AI call, or tests were executed during implementation.
+Generation evaluates supplied eligible sources and can return up to eight options per request. The prompt separates useful ideas from the recommended length-constrained subset; additional options can be alternatives. It does not force a minimum count or fabricate facts. Each Ready source offers **Suggest wording for this** once a draft exists, so omitted work can be explored individually. Grouped sources and explanations are visible on each card. Missing AI explanations are disclosed rather than invented.
 
-Prepared tests: tests/test_resumes.py. Run these and the existing regression suite in an isolated data directory. Manually verify upload/download for all three formats, originals byte-for-byte unchanged, current role placement, historical section protection, saved drafts, concurrent edits, repeat updates, rejected bullets, disabled/remote/unreachable providers, malformed model replies, placeholders, unsupported numbers, missing dates, excluded records, calendar rollover in the organization timezone, and fiscal/calendar differences.
+## Refreshing a draft
 
-Full backups include the resumes folder. Database-only maintenance snapshots do not include files. Confirm file/version availability after a full restore. Resume files are not registered in the accomplishment attachment cleanup system and are not sent to Git Sync.
+The screen compares the live inventory to the last saved review, displaying counts of newly available, changed and no-longer-eligible sources. GET requests never call the model. Older drafts without timestamps are supported and labeled honestly.
 
-## Reviewed editing upgrade
+**Refresh suggestions** re-evaluates current eligible work while keeping existing cards in order, edited wording, selection and suppression choices. Edits are saved before provider/configuration checks; a failed provider request returns an error notice while retaining the draft. New options are appended, labeled, and unselected. Exact repeats of original generated wording are not appended again after a user edits that wording. Individual requests only update the requested source's review snapshot; unrelated new work remains marked newly available.
 
-The review workflow now supports linked additions, replacements, combinations and removals. Changes to existing text start unchecked and require explicit acceptance. Confirm current-role boundaries before generating, and mark critical paragraphs Keep. Source eligibility still uses the click-year calendar dates. Optional job targeting is blank by default and supplies relevance context only.
+Each card retains the source revision and evidence used to generate it. Refreshing the overall source list cannot silently validate old wording against changed facts. Outdated cards stay visible for reference, but must be deselected before approval; request and review a new option. Concurrent tabs use optimistic revision checks and cannot overwrite newer saved work.
 
-Length goals apply to the resulting section; a persistent baseline prevents repeated updates from resetting the allowance. Excess length requires explicit approval. Unchecked changes are skipped temporarily; the separate suppression checkbox prevents future source suggestions and can be reset. Current-year sources with changed revisions may be reconsidered. Existing versions made before revision tracking may need an additional human review during their first upgraded update.
+## Selecting, previewing and saving
 
-The live content preview shares paragraph-edit semantics with document saving. Saved output text is checked against the approved result. Local paginated preview uses LibreOffice if installed; it does not install software or invoke cloud conversion. Fonts and rendering engines can affect pagination. No renderer or application was executed as part of this implementation.
+All newly generated options start unchecked. Additions, replacements, combinations and removals require explicit selection. Skipping is temporary; the separate suppression checkbox excludes sources from future suggestions. Suppression can be reset from advanced controls after finishing or discarding the draft.
 
-Additional prepared checks cover protected/historical sections, overlapping edits, atomic replacement/combination and preview/output parity. End-to-end UI, real provider behavior, ODT rendering, failed renderer cleanup, restoration provenance, and complex date boundaries still require execution in your test environment.
+Desktop shows suggestions and a sticky content preview side by side. Smaller screens offer Suggestions/Preview view buttons. Save draft and Save approved resume remain available below either view. Category and view buttons support keyboard activation, retain accessible pressed state, and use the shared theme tokens. Without JavaScript, categories and both review panels remain visible; server validation still enforces approval rules.
+
+The preview highlights new/replaced/removed text and measures current-role word count against the persistent length goal. Excess length requires explicit permission. Selecting cards with overlapping source IDs or paragraph targets shows a conflict, pauses the preview and blocks approval; the server also rejects those combinations. Outdated source cards are blocked likewise. Draft saving remains available while resolving conflicts. Historical roles, protected paragraphs, and the uploaded original remain protected. Saved document text is checked against the deterministic preview before committing a version.
+
+Version downloads, restoring an earlier approved version as a new working baseline, and suppression reset live under Version history and advanced controls. Restore never deletes later versions; finish or discard a proposal first.
+
+## Limits
+
+PDF text is reconstructed into Word paragraphs and requires manual layout review. Scanned/encrypted PDFs and complex Word tables/text boxes are unsupported. DOCX and ODT retain native output formats. Role/date parsing is heuristic, so confirm section boundaries carefully. Word counts and automated numeric/duplicate checks cannot guarantee page length, semantic accuracy, or perfect relevance. Review claims yourself.
+
+Paginated preview requires local LibreOffice. It does not install software or invoke cloud conversion. The always-available content preview is not a page-layout renderer; installed fonts affect final pagination. Generation has bounded request/response sizes and no automatic batching for very large archives. Useful work remains visible even when the model returns fewer options than expected, and an individual request may still return no grounded improvement.
+
+Full backups include the resumes folder. Database-only maintenance snapshots do not include document files. Resume files are not registered with accomplishment attachment cleanup and are not sent to Git Sync.
+
+## Validation handoff for the workspace redesign
+
+No new dependency or schema migration is needed for this redesign. Restart the existing web process to load updated Python routes. No application, model call, browser session, migration, or test suite was run during this phase. Regression cases are prepared in `tests/test_resume_sources.py` and `tests/test_resume_workspace.py`, alongside the existing document tests in `tests/test_resumes.py`.
+
+Run the repository's `scripts/test.ps1` (tests use isolated data), or in PowerShell:
+
+```powershell
+$env:PYTHONPATH = 'backend'
+.\.venv\Scripts\python.exe -m pytest tests/test_resumes.py tests/test_resume_sources.py tests/test_resume_workspace.py
+```
+
+Manual acceptance checks:
+
+1. Open an older one-source draft with three eligible accomplishments: all three remain visible, with two newly available.
+2. Edit and select the original card, refresh, and confirm its wording/selection remain while new cards start unchecked.
+3. Request wording for an omitted source; verify the new option cites it and is not automatically inserted. Repeat without creating duplicate cards with identical generated wording.
+4. Change or remove a source, then refresh. Its old card must remain flagged and cannot be approved. Raw notes remain in Needs review until explicitly completed/approved.
+5. Simulate an unavailable provider and two open tabs. Confirm draft edits survive failure and stale revisions cannot overwrite a newer draft.
+6. Select overlapping alternatives and exceed the length goal. Confirm clear feedback, draft saving, explicit growth permission, and server-side rejection of conflicts even without JavaScript.
+7. Review each theme in light/dark mode, keyboard-only interaction, narrow mobile layout, both mobile views, provider validation inside collapsed controls, and empty inventory states.
+8. Approve a nonconflicting selection, verify original bytes are unchanged and output matches preview, reopen to see represented sources, then restore an older approved version. Check DOCX/ODT separately and pagination if LibreOffice is available.

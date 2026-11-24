@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Year-End Self Input · CareerForge{% endblock %}
+{% block content %}
+<div class="self-input-workspace">
+<p class="eyebrow">Your work, in your words</p><h1>Year-End Self Input</h1>
+<p>Build a first-person assessment from the work you collected. Review the evidence, let your local AI draft it, then edit and approve your own submission.</p>
+{% if not record and values.get('deleted') == '1' %}<p class="notice success" role="status">Self input deleted. Your original accomplishments and supporting documents are unchanged.</p>{% endif %}
+{% if not record and values.get('deleted') == 'selected' %}<p class="notice success" role="status">Selected self inputs deleted. Your original accomplishments and supporting documents are unchanged.</p>{% endif %}
+{% if record %}<p><a href="/self-input/{{ record.id }}">Back to {{ record.title }}</a></p><p class="notice">Refreshing evidence preserves your paragraphs and answers. Save any edits on the draft page before leaving it. Existing paragraphs keep their original evidence references.</p>{% else %}
+<form action="/self-input" method="get" class="self-period-form"><h2>1. Choose your review period</h2>
+<label>Reporting year<select name="year">{% for year in years %}<option value="{{ year }}" {% if values.get('year', '')|string == year|string %}selected{% endif %}>{{ year }}</option>{% endfor %}</select></label><button>Use reporting year</button><p class="muted">Uses the calendar or fiscal year configured in <a href="/reporting-year">Settings → Reporting Year</a>.</p></form>
+<form action="/self-input" method="get"><details><summary>Use a custom period</summary><div class="grid"><label>From<input type="date" name="start" value="{{ period.start }}" required></label><label>Through<input type="date" name="end" value="{{ period.end }}" required></label></div><button>Use these dates</button></details></form>
+{% endif %}
+<form action="{{ '/self-input/' + record.id + '/sources' if record else '/self-input' }}" method="post" id="self-source-form">
+<input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="source_selection" value="yes">
+<input type="hidden" name="start" value="{{ period.start }}"><input type="hidden" name="end" value="{{ period.end }}">
+{% if record %}<input type="hidden" name="revision" value="{{ record.revision }}">{% endif %}
+<h2>{{ 'Refresh' if record else '2. Review' }} your collected work</h2>
+<p><strong>{{ period.start }} through {{ period.end }}</strong> · {{ inventory.ready|length }} ready · {{ inventory.review|length }} need confirmation · {{ inventory.excluded|length }} report-excluded</p>
+<p>Archived work is included when it falls in this period. Report-excluded records and Trash will not be sent to AI.</p>
+<h3>Ready to include</h3>
+{% for row in inventory.ready %}{% set source = row.record %}
+<details class="self-source"><summary><span>{{ source.title }}</span> <span class="status">{{ row.day }}</span></summary>
+<p>{{ source.action }} {{ source.metric }} {{ source.impact }}</p><p><a href="/accomplishments/{{ source.id }}">Review original accomplishment</a></p></details>
+<label><input type="checkbox" name="source_ids" value="{{ source.id }}" {% if source.id in selected %}checked{% endif %}>Include {{ source.title }}</label>
+{% else %}<p>No approved, completed work in this period. You can review and confirm the records below.</p>{% endfor %}
+<h3>Review included contributions</h3><p>For a new assessment, all available contributions start selected. Uncheck any that do not belong in this period. Submitting this selection confirms that the checked contributions belong in your assessment; it does not mark unfinished work completed or approved. Saved assessments keep your previous selections.</p>
+{% for row in inventory.review %}{% set source = row.record %}<fieldset class="self-source"><legend>{{ source.title }}</legend><p>{{ row.reason }}. Status: {{ source.status|replace('_', ' ') }}.</p><details><summary>Recorded work</summary><p>{{ source.raw_note }}</p><p>{{ source.action }} {{ source.metric }} {{ source.impact }}</p><a href="/accomplishments/{{ source.id }}">Review original accomplishment</a></details>
+<label><input type="checkbox" name="confirmed_source_ids" value="{{ source.id }}" {% if source.id in selected %}checked{% endif %}>Include this contribution for {{ period.start }} through {{ period.end }}.</label><p class="muted">Leave unchecked if it does not belong in this assessment. Including it does not mark the original work completed or approved.</p></fieldset>{% else %}<p>No additional records need confirmation.</p>{% endfor %}
+{% if inventory.excluded %}<details><summary>Report-excluded records ({{ inventory.excluded|length }})</summary>{% for row in inventory.excluded %}<p><a href="/accomplishments/{{ row.record.id }}">{{ row.record.title }}</a> — {{ row.reason }}</p>{% endfor %}</details>{% endif %}
+<label><input type="checkbox" name="attachments" value="yes" {% if (record and record.state.attachments) or (not record and (not values.get('source_selection') or values.get('attachments') == 'yes')) %}checked{% endif %}>Read supporting document attachments</label>
+<p class="muted">TXT, Markdown, CSV, DOCX, ODT and text-based PDF are supported. Files are read locally; any unavailable text is disclosed before AI generation. External evidence links are listed as context but never fetched.</p>
+{% if not record %}
+<h2>3. Set up your draft</h2><label>Title<input name="title" required maxlength="300" value="{{ values.get('title', 'My year-end self input — ' + period.label) }}"></label>
+{% set prefs = values %}{% include "self_input_preferences.html" %}
+<details><summary>Employer questions or performance elements — optional</summary><p>Enter one question or element per line, up to ten. These replace the default headings. You can add a submission character limit above.</p><label>Questions or elements<textarea name="employer_questions" rows="5" maxlength="10000">{{ values.get('employer_questions', '') }}</textarea></label></details>
+<label><input type="checkbox" name="extra_section" value="challenges" {% if 'challenges' in values.getlist('extra_section') %}checked{% endif %}>Include challenges and lessons learned</label>
+<label><input type="checkbox" name="extra_section" value="goals" {% if 'goals' in values.getlist('extra_section') %}checked{% endif %}>Include next-year goals (requires my input)</label>
+{% endif %}
+<button>{{ 'Refresh evidence snapshots' if record else 'Save selection and continue to AI writing' }}</button><p class="muted">Next: review any evidence warnings, then choose Generate all sections to have your local AI write the assessment.</p>
+</form>
+{% if not record %}<section class="panel" id="self-input-library"><h2>Your self inputs</h2>
+{% if assessments %}
+<form action="/self-input/bulk-delete/preview" method="post" id="self-input-delete-selection">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+<p>Select up to 200 self inputs to delete. You will review the selection before anything is removed.</p>
+<label id="self-input-select-all-label" hidden><input type="checkbox" id="self-input-select-all">Select all self inputs</label>
+{% for assessment in assessments %}<div class="self-toolbar">
+<label><input type="checkbox" name="assessment_ids" value="{{ assessment.id }}" aria-label="Select {{ assessment.title }}, created {{ assessment.created_at.strftime('%Y-%m-%d %H:%M') }} UTC">Select</label>
+<div><a href="/self-input/{{ assessment.id }}">{{ assessment.title }}</a> · {{ assessment.state.period.start }} – {{ assessment.state.period.end }} · {{ assessment.state.versions|length }} approved version(s)<br><small class="muted">Created {{ assessment.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</small></div><a class="button secondary" href="/self-input/{{ assessment.id }}/delete" aria-label="Delete {{ assessment.title }}, created {{ assessment.created_at.strftime('%Y-%m-%d %H:%M') }} UTC">Delete</a></div>{% endfor %}
+<p id="self-input-selection-count" role="status" hidden></p>
+<button class="danger" id="self-input-delete-selected">Delete selected</button>
+</form>
+{% else %}<p>Your saved drafts and approved assessments will appear here.</p>{% endif %}
+</section><script src="/static/self-input-library.js?v=1" defer></script>{% endif %}
+</div>
+{% endblock %}

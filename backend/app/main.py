@@ -50,6 +50,7 @@ from app.models import (
     User,
 )
 from app.resume_routes import register as register_resume_routes
+from app.self_input_routes import register as register_self_input_routes
 from app.schemas import AccomplishmentInput, AIProviderInput
 from app.security import (
     csrf_token,
@@ -2621,3 +2622,4 @@ async def ai_review(record_id: str, request: Request, session: SessionDependency
 
 
 register_resume_routes(app, templates, context, current_user)
+register_self_input_routes(app, templates, context, current_user)

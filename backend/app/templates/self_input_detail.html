@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ record.title }} · CareerForge{% endblock %}
+{% block content %}
+<div class="self-input-workspace">
+<p class="eyebrow">Year-End Self Input</p><h1>{{ record.title }}</h1>
+<p><a href="/self-input">All self inputs</a> · {{ state.period.start }} through {{ state.period.end }}</p>
+{% set writing = namespace(ready=0) %}{% for section in state.sections %}{% if section.blocks|map(attribute='text')|join('')|trim %}{% set writing.ready = writing.ready + 1 %}{% endif %}{% endfor %}
+{% set has_draft = writing.ready > 0 %}
+{% if not has_draft and not state.proposals and not state.get('generated_at') %}<p class="notice"><strong>Your selection is saved. AI has not written your assessment yet.</strong> Review any evidence warnings below, then click <a href="#self-input-review">Generate all sections</a> to start writing.</p>{% endif %}
+{% if state.error %}<p class="notice error" role="alert">{{ state.error }} {% if 'provider' in state.error|lower %}<a href="/providers">Open AI Providers</a>{% endif %}</p>{% endif %}
+{% if not providers %}<p class="notice warning">Set up an AI provider before generating your self input. <a href="/providers">Open Settings → AI Providers</a>. You can still write and save your own draft.</p>{% endif %}
+{% if new_count or changed_count or unavailable %}<p class="notice warning">Your collection has changed: {{ new_count }} additional record(s) can be reviewed; {{ changed_count }} selected record(s) changed; {{ unavailable|length }} selected record(s) are no longer available. <a href="/self-input/{{ record.id }}/sources">Review your source selection</a>.</p>{% endif %}
+<div class="self-summary"><strong>{{ state.sources|length }} sources selected</strong><span>{{ writing.ready }} of {{ state.sections|length }} sections have draft text</span><span>{{ state.proposals|length }} proposed section(s)</span><span>{{ state.versions|length }} approved version(s)</span></div>
+<details class="panel"><summary>Evidence being used · review before generating</summary>
+<p><a href="/self-input/{{ record.id }}/sources">Change selection or refresh evidence</a>. Refreshing keeps your writing. It does not automatically rewrite your draft.</p>
+{% for key, source in state.sources.items() %}<details class="self-source"><summary>{{ source.title }} · {{ source.status|replace('_', ' ') }}</summary>
+<p><a href="/accomplishments/{{ key }}">Open original</a></p><p>{{ source.action }} {{ source.metric }} {{ source.impact }}</p><p>{{ source.notes }}</p><details><summary>Original note, project context and documents</summary><p>{{ source.raw_note }}</p>{% for project in source.projects %}<p><strong>{{ project.name }}</strong>: {{ project.description }}</p>{% endfor %}{% for attachment in source.attachments %}<p><strong>{{ attachment.name }}</strong> — {{ attachment.issue or 'Text extracted locally' }}</p>{% if attachment.text %}<details><summary>Extracted text</summary><pre>{{ attachment.text }}</pre></details>{% endif %}{% endfor %}</details></details>{% endfor %}
+</details>
+{% if issues %}<section class="notice warning"><h2>Some document content is unavailable</h2><ul>{% for issue in issues %}<li><strong>{{ issue.name }}</strong>: {{ issue.issue }}</li>{% endfor %}</ul><p>Only the extracted text shown in the evidence review can supply facts. Unreadable files, images and missing pages will not be used.</p></section>{% endif %}
+<form method="post" action="/self-input/{{ record.id }}/review" id="self-input-review">
+<input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="revision" value="{{ record.revision }}">
+<input type="hidden" name="inclusion_present" value="yes">
+<section id="self-ai-progress" class="notice" hidden aria-labelledby="self-ai-progress-title" tabindex="-1">
+<strong id="self-ai-progress-title">Your local AI is working</strong>
+<p role="status">Preparing evidence and generating suggestions. Keep this page open; large selections can take several minutes.</p>
+<progress aria-label="AI generation in progress" style="width:100%"></progress>
+<p>Elapsed: <output id="self-ai-elapsed" aria-live="off">00:00.0</output></p>
+<p class="muted">This measures time waiting for the request, not percent complete. Your draft is saved before AI generation.</p>
+</section>
+<details><summary>Writing preferences and local AI</summary>{% set prefs = state.preferences %}{% include "self_input_preferences.html" %}
+<label>Local AI provider<select name="provider"><option value="">Choose a configured provider</option>{% for provider in providers %}<option value="{{ provider.id }}" {% if provider.id == state.provider or (not state.provider and loop.first) %}selected{% endif %}>{{ provider.display_name }} — {{ provider.default_model }}</option>{% endfor %}</select></label><p><a href="/providers">Manage AI Providers</a>. Only a local/private-network provider may process this self input.</p></details>
+{% if issues %}<label><input type="checkbox" name="ack_issues" value="yes">I reviewed the missing document text. Continue with the readable information.</label>{% endif %}
+<h2>Write all sections, then choose your draft</h2>
+<div class="self-toolbar"><button name="operation" value="generate" {% if state.proposals or not providers %}disabled{% endif %}>{{ 'Refresh all sections' if has_draft or state.get('generated_at') else 'Generate all sections' }}</button>{% if has_draft and writing.ready < state.sections|length %}<button name="operation" value="generate_missing" class="secondary" {% if state.proposals or not providers %}disabled{% endif %}>Write missing sections</button>{% endif %}<button name="operation" value="save" class="secondary">Save draft</button></div>
+<p class="muted">AI prepares every section, including unchecked sections, so you can compare the writing before choosing. It writes in smaller requests to keep generation reliable. If a section needs more evidence, it asks questions instead of inventing content. Write missing sections fills empty sections while keeping your existing writing.</p>
+<p class="muted">Check the sections you want in your assessment. Their text appears in the combined draft immediately. Checkboxes only change the selection; unchecking preserves the text. Save draft to keep your choices. Refreshing existing writing proposes changes for your review.</p>
+<p id="self-inclusion-status" role="status"></p><p><a href="#self-combined-draft">View combined draft</a></p>
+<section class="panel" aria-labelledby="self-selection-heading">
+<h2 id="self-selection-heading">AI's suggested section selection</h2>
+<p>After each draft generation or rewrite, AI reviews all sections together for flow, relevance, repetition and length. The first draft uses its suggested checkboxes; later suggestions leave your choices unchanged.</p>
+{% if state.get('selection_error') %}<p class="notice warning" role="status">{{ state.selection_error }}</p>{% endif %}
+{% if state.get('selection_recommendation') %}
+<p>See the explanation beside each checkbox. You can use the suggested selection or choose sections yourself. Text is always kept.</p>
+<p id="self-selection-stale" class="notice warning" role="status" {% if selection_current %}hidden{% endif %}>The draft or writing preferences changed since this recommendation. Ask for a fresh selection before using it.</p>
+<button class="secondary" name="operation" value="select_ai" id="self-use-selection" {% if not selection_current %}disabled{% endif %}>Use AI's selection</button>
+{% else %}<p class="muted">No selection recommendation yet. Ask AI to review your existing section text, or generate a draft.</p>{% endif %}
+{% if state.proposals %}<p class="muted">Recommendations consider the proposed rewrites with locked paragraphs preserved. Using the selection only changes checkboxes. Accept or dismiss rewrites separately; dismissing or editing wording may require a fresh recommendation.</p>{% endif %}
+<button class="secondary" name="operation" value="recommend" {% if not providers or (not has_draft and not state.proposals) %}disabled{% endif %}>Suggest section selection</button>
+</section>
+{% if state.proposals %}<p class="notice">Review each proposal beside your draft. Apply the sections you want, then dismiss the rest before another AI request or final approval.</p><button class="secondary" name="operation" value="dismiss">Dismiss remaining proposals; keep my draft</button>{% endif %}
+<label>For the next section rewrite<select name="refinement"><option value="">Use my answers and keep the current style</option><option>Make it shorter without dropping supported results</option><option>Make it clearer and more direct</option><option>Make it sound more natural in my voice</option></select></label>
+{% for section in state.sections %}
+<section class="self-section" aria-labelledby="heading-{{ section.id }}">
+<h2 id="heading-{{ section.id }}">{{ section.title }}</h2>
+{% set content = namespace(has_text=false) %}{% for block in section.blocks %}{% if block.text|trim %}{% set content.has_text = true %}{% endif %}{% endfor %}
+<label><input type="checkbox" name="included_sections" value="{{ section.id }}" data-section-inclusion aria-describedby="empty-note-{{ section.id }}" {% if section.get('included', True) %}checked{% endif %}>Include this section</label>
+<p class="muted" id="empty-note-{{ section.id }}" data-empty-section-note {% if content.has_text %}hidden{% endif %}>{% if section.id in state.proposals %}There is no draft text here yet. Review and accept the proposed wording below before including it.{% else %}No text is available for this section yet. Use Generate all sections or Write missing sections above. If AI needs more evidence, answer this section's questions and try again.{% endif %}</p>
+<button class="secondary" name="operation" value="fill:{{ section.id }}" data-fill-section {% if content.has_text %}hidden{% endif %}>Write and include this section</button>
+{% if state.get('selection_recommendation') %}{% set decision = state.selection_recommendation.decisions.get(section.id) %}{% if decision %}<p class="muted"><strong>{{ 'AI recommends including this section' if decision.include else 'AI recommends leaving this section out' }}</strong> — {{ decision.reason }}</p>{% endif %}{% endif %}
+{% if section.id.startswith('custom-') and section.prompt != section.title %}<p>{{ section.prompt }}</p>{% endif %}
+<div class="self-section-columns">
+<div><h3>Section text — edit as needed</h3><p class="muted">Paragraph locks keep AI from replacing your wording during a rewrite. You can still edit locked text yourself. Use Include this section to add it to the combined draft.</p>
+{% for block in section.blocks %}<div class="self-paragraph"><label>Paragraph {{ loop.index }}<textarea name="text_{{ block.id }}" rows="5" maxlength="12000" data-narrative>{{ block.text }}</textarea></label><label><input type="checkbox" name="locked" value="{{ block.id }}" {% if block.locked %}checked{% endif %}>Keep this paragraph unchanged by AI</label>
+{% if block.source_ids %}<details><summary>Evidence behind this paragraph</summary>{% for key in block.source_ids %}{% set evidence = state.history.get(block.get('source_versions', {}).get(key, ''), state.sources.get(key)) %}{% if evidence %}<p><a href="/accomplishments/{{ key }}">{{ evidence.title }}</a></p><p>{{ evidence.action }} {{ evidence.metric }} {{ evidence.impact }}</p>{% if key not in state.sources or evidence.fingerprint != state.sources[key].fingerprint %}<p class="notice warning">This paragraph refers to an earlier evidence snapshot. Review it before final approval.</p>{% endif %}{% endif %}{% endfor %}</details>{% endif %}</div>
+{% else %}<p class="muted">No draft text yet. Generate a proposal or add your own paragraph.</p>{% endfor %}
+<button class="secondary" name="operation" value="add:{{ section.id }}">Add my own paragraph</button>
+</div>
+{% if section.id in state.proposals %}{% set proposal = state.proposals[section.id] %}<div class="self-proposal"><h3>Proposed wording</h3>
+{% for block in proposal.blocks %}<label>Proposed paragraph {{ loop.index }}<textarea name="proposal_{{ block.id }}" rows="5" maxlength="12000">{{ block.text }}</textarea></label><p class="muted">{% for key in block.source_ids %}<a href="/accomplishments/{{ key }}">{{ state.sources[key].title }}</a>{% if not loop.last %} · {% endif %}{% else %}Based on your section answer{% endfor %}</p>{% else %}<p>No grounded text was proposed. Review any questions below; applying an empty proposal clears unlocked paragraphs.</p>{% endfor %}
+<button name="apply_section" value="{{ section.id }}">Accept this rewrite</button><p class="muted">Replaces unlocked paragraphs in this section. Locked paragraphs and your inclusion choice stay unchanged.</p></div>{% endif %}
+</div>
+<details open><summary>Questions and your answers</summary>
+{% set question_source = state.proposals.get(section.id, section) %}
+{% if section.get('questions_error') %}<p class="notice warning">{{ section.questions_error }}</p>{% endif %}
+{% if question_source.questions %}<h4>{{ 'Questions about the proposed wording' if section.id in state.proposals else 'Questions to strengthen this section' }}</h4><ul>{% for question in question_source.questions %}<li>{{ question }}</li>{% endfor %}</ul>
+{% elif section.get('questions_checked') %}<p class="muted">AI did not identify a useful follow-up question for this wording. You can still add corrections or details below, or ask again.</p>
+{% else %}<p class="muted">AI has not supplied specific questions for this section yet. Ask for questions based on its wording and your selected evidence.</p>{% endif %}
+<button class="secondary" name="operation" value="questions:{{ section.id }}" {% if not providers %}disabled{% endif %}>Suggest questions about this section</button>
+<label>Your answers or additional context<textarea name="answer_{{ section.id }}" rows="3" maxlength="6000">{{ section.answer }}</textarea></label><p class="muted">Answer the questions above or add facts you can confirm. These notes are saved with this draft and used for AI rewrites, but are excluded from exported submission text.</p></details>
+<button class="secondary" name="operation" value="generate:{{ section.id }}" {% if state.proposals or not providers %}disabled{% endif %}>Rewrite this section using my answers</button>
+</section>
+{% endfor %}
+<section class="panel" id="self-combined-draft"><h2>Your combined assessment draft</h2><p id="self-length" role="status"></p><p id="self-copy-status" role="status"></p><button type="button" class="secondary" id="self-copy" hidden>Copy draft text</button><textarea id="self-preview" rows="14" readonly aria-label="Current submission text">{{ narrative }}</textarea><p class="muted">Only checked sections with text appear here and in approved exports. Edit their text above. Unaccepted rewrites, questions and internal evidence links are excluded.</p></section>
+<details><summary>Source coverage</summary><p>Based on citations in your current draft. Manually edited text still needs your review against its linked evidence.</p>{% for row in coverage %}<p><a href="/accomplishments/{{ row.id }}">{{ row.title }}</a> — {% if row.sections %}Used in {{ row.sections|join(', ') }}{% else %}Not in the current draft. {% if state.omissions.get(row.id) %}AI explanation: {{ state.omissions[row.id] }}{% else %}No AI explanation available; it remains selected for consideration.{% endif %}{% endif %}</p>{% endfor %}</details>
+<section class="self-approval"><h2>Approve a version</h2>
+<label><input type="checkbox" name="confirm_review" value="yes">I reviewed this draft and confirm that its claims reflect my work and contribution.</label>
+<details><summary>Length and changed evidence exceptions</summary><label><input type="checkbox" name="allow_length" value="yes">Allow this version to exceed my character limit</label><label><input type="checkbox" name="ack_stale" value="yes">I reviewed any changed or removed evidence against the saved snapshots and confirm the wording is still accurate</label></details>
+<div class="self-save-bar"><p id="self-generation-status" role="status"></p><button class="secondary" name="operation" value="save">Save draft</button><button name="operation" value="approve" {% if state.proposals %}disabled{% endif %}>Save approved version</button></div></section>
+</form>
+<section class="panel"><h2>Approved versions</h2>{% for version in state.versions|reverse %}<p><strong>Version {{ state.versions|length - loop.index0 }}</strong> · <time datetime="{{ version.created_at }}">{{ version.created_at }}</time> · {% for extension, label in [('docx', 'Word'), ('odt', 'ODT'), ('txt', 'Plain text')] %}<a href="/self-input/{{ record.id }}/versions/{{ version.id }}/{{ extension }}">{{ label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>{% else %}<p>Approve your draft to create a separate downloadable version. Later edits will not change it.</p>{% endfor %}</section>
+</div>
+<script src="/static/self-input.js?v=8" defer></script>
+{% endblock %}

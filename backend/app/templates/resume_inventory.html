@@ -1,0 +1,35 @@
+<section class="resume-inventory" aria-labelledby="resume-inventory-title">
+<h2 id="resume-inventory-title">Your accomplishments</h2>
+<p>The full current-year list stays here, even when the AI recommends just one change. Open a source to review its evidence or ask for individual wording.</p>
+<div class="resume-inventory-tabs" aria-label="Accomplishment categories">
+<button type="button" class="secondary" data-inventory="ready" aria-controls="resume-inventory-ready" aria-pressed="true">Ready ({{ workspace.ready|length }})</button>
+<button type="button" class="secondary" data-inventory="review" aria-controls="resume-inventory-review" aria-pressed="false">Needs review ({{ workspace.review|length }})</button>
+<button type="button" class="secondary" data-inventory="represented" aria-controls="resume-inventory-represented" aria-pressed="false">Already represented ({{ workspace.represented|length }})</button>
+</div>
+<div id="resume-inventory-ready" data-inventory-panel="ready">
+<h3>Ready to consider</h3>
+{% for source in workspace.ready %}
+<details class="resume-source"><summary>{{ source.title }} <span class="status">{{ source.outcome }}</span></summary>
+<p>{{ source.completed }}{% if source.organization %} · {{ source.organization }}{% endif %}{% if source.projects %} · {{ source.projects|join(', ') }}{% endif %}</p>
+<p>{{ source.action }}</p>{% if source.metric %}<p><strong>Metric:</strong> {{ source.metric }}</p>{% endif %}{% if source.impact %}<p><strong>Impact:</strong> {{ source.impact }}</p>{% endif %}
+{% if source.reason %}<p><strong>{{ source.reason_origin }}:</strong> {{ source.reason }}</p>{% endif %}
+{% if source.cards %}<p>Related options: {% for card in source.cards %}<a href="#resume-card-{{ card }}" data-resume-card-link>Suggestion {{ card }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+<p><a href="/accomplishments/{{ source.id }}">View accomplishment</a></p>
+{% if state.proposal %}
+<button class="secondary" form="resume-review" formaction="/resumes/{{ resume.id }}/update" name="source_id" value="{{ source.id }}">Suggest wording for this</button>
+{% else %}
+<label><input form="resume-generate" type="checkbox" name="nominations" value="{{ source.id }}" {% if source.id in state.get('nominations', []) %}checked{% endif %}>Give this accomplishment extra consideration</label>
+{% endif %}
+</details>
+{% else %}<p class="empty-state">No new ready accomplishments. Check Needs review for records you can complete or approve.</p>{% endfor %}
+</div>
+<div id="resume-inventory-review" data-inventory-panel="review">
+<h3>Needs review</h3><p>Raw notes stay unfinished until you review them. Completion dates default to the original entry date; later edits do not change that date. Missing metrics alone do not exclude work.</p>
+{% for source in workspace.review %}<p><a href="/accomplishments/{{ source.id }}">{{ source.title }}</a> — {{ source.reason }}{% if source.status not in ['completed', 'archived'] %} ({{ source.status|replace('_', ' ') }}){% endif %}</p>{% else %}<p>No current-year records need attention.</p>{% endfor %}
+</div>
+<div id="resume-inventory-represented" data-inventory-panel="represented">
+<h3>Already represented</h3><p>These accomplishments were included in an approved version and have not changed.</p>
+{% for source in workspace.represented %}<p><a href="/accomplishments/{{ source.id }}">{{ source.title }}</a></p>{% else %}<p>No unchanged accomplishments have been incorporated yet.</p>{% endfor %}
+</div>
+{% if candidates.counts.get('Completed outside this calendar year') %}<p class="muted">{{ candidates.counts['Completed outside this calendar year'] }} accomplishment(s) belong to other calendar years and remain in your history.</p>{% endif %}
+</section>

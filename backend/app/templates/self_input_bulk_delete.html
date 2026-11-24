@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Delete selected self inputs · CareerForge{% endblock %}
+{% block content %}
+<p class="eyebrow">Year-End Self Input</p>
+<h1>Delete {{ assessments|length }} selected self input(s)?</h1>
+<section class="panel">
+<p>This permanently deletes the following assessments, including their drafts, saved answers, evidence snapshots and approved versions. They cannot be recovered from Trash.</p>
+<ul>{% for assessment in assessments %}<li><p><a href="/self-input/{{ assessment.id }}">{{ assessment.title }}</a><br>{{ assessment.state.period.start }} – {{ assessment.state.period.end }} · {{ assessment.state.versions|length }} approved version(s)<br>Created {{ assessment.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</p></li>{% endfor %}</ul>
+<p>Your original accomplishments, supporting documents, other self inputs and copies you already downloaded are kept.</p>
+<form action="/self-input/bulk-delete/confirm" method="post">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+{% for assessment in assessments %}<input type="hidden" name="assessment_ids" value="{{ assessment.id }}"><input type="hidden" name="revision_{{ assessment.id }}" value="{{ assessment.revision }}">{% endfor %}
+<button class="danger" name="confirm_delete" value="yes">Permanently delete {{ assessments|length }} self input(s)</button>
+<a class="button secondary" href="/self-input#self-input-library">Cancel</a>
+</form>
+</section>
+{% endblock %}

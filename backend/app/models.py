@@ -309,3 +309,12 @@ class Resume(Base):
     state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     revision: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SelfInput(Base):
+    __tablename__ = "self_inputs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    title: Mapped[str] = mapped_column(String(300))
+    state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
